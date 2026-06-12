@@ -41,7 +41,10 @@ $loginNickname = $_SESSION['nickname'] ?? null;
   <a class="topbar__brand" href="index.php">My<span>Blog</span></a>
   <nav class="topbar__nav">
     <?php if ($loginNickname): ?>
+      <a href="write.php">글쓰기</a>
+      <a href="blog.php?id=<?= (int)$_SESSION['user_id'] ?>">내 블로그</a>
       <span class="topbar__user"><?= htmlspecialchars($loginNickname) ?>님</span>
+      <a href="logout.php">로그아웃</a>
     <?php else: ?>
       <a href="auth.php">로그인</a>
     <?php endif; ?>
