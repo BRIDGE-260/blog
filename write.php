@@ -10,6 +10,7 @@ if (!isset($_SESSION['user_id'])) {        // 로그인 검사 먼저 (header �
     exit;
 }
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/categories.php';
 
 $userId = $_SESSION['user_id'];
 $error  = '';
@@ -17,7 +18,7 @@ $error  = '';
 // 폼 값 (에러 시 다시 채우기 위해 변수로 보관)
 $title      = '';
 $content    = '';
-$categoryId = '';
+$category   = '';
 $visibility = 'all';
 $tagInput   = '';
 
@@ -27,7 +28,7 @@ $tagInput   = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $title      = trim($_POST['title']   ?? '');
     $content    = trim($_POST['content'] ?? '');
-    $categoryId = $_POST['category_id']  ?? '';      // '' 이면 카테고리 없음(NULL)
+    $category   = $_POST['category']     ?? '';      // 고정 목록의 카테고리 이름('' = 선택 안 함)
     $visibility = $_POST['visibility']   ?? 'all';
     $tagInput   = trim($_POST['tags']    ?? '');
     $status     = ($_POST['status'] ?? 'published') === 'draft' ? 'draft' : 'published';
@@ -62,8 +63,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // 검증 통과 → 글 INSERT + 태그 연결
     if ($error === '') {
-        // category_id 는 선택 안 했으면 NULL
-        $catParam = ($categoryId !== '') ? (int)$categoryId : null;
+        // 고른 주제를 이 유저의 카테고리로 보장(없으면 생성) → id. 선택 안 함이면 NULL
+        $catParam = in_array($category, $FIXED_CATEGORIES, true)
+            ? ensureCategory($conn, $userId, $category)
+            : null;
 
         $stmt = $conn->prepare(
             "INSERT INTO posts
@@ -115,13 +118,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// 내 카테고리 목록 (드롭다운용)
-$stmt = $conn->prepare("SELECT id, name FROM categories WHERE user_id = ? ORDER BY sort_order");
-$stmt->bind_param("i", $userId);
-$stmt->execute();
-$categories = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-$stmt->close();
-
 $pageTitle = '글쓰기 · MyBlog';
 require_once __DIR__ . '/header.php';
 ?>
@@ -140,11 +136,11 @@ require_once __DIR__ . '/header.php';
     <div class="wf-row">
       <label>
         <span>카테고리</span>
-        <select name="category_id">
+        <select name="category">
           <option value="">선택 안 함</option>
-          <?php foreach ($categories as $c): ?>
-            <option value="<?= (int)$c['id'] ?>" <?= $categoryId == $c['id'] ? 'selected' : '' ?>>
-              <?= htmlspecialchars($c['name']) ?>
+          <?php foreach ($FIXED_CATEGORIES as $cn): ?>
+            <option value="<?= htmlspecialchars($cn) ?>" <?= $category === $cn ? 'selected' : '' ?>>
+              <?= htmlspecialchars($cn) ?>
             </option>
           <?php endforeach; ?>
         </select>
@@ -162,10 +158,13 @@ require_once __DIR__ . '/header.php';
 
     <textarea class="wf-content" name="content" rows="14" placeholder="내용을 입력하세요" required><?= htmlspecialchars($content) ?></textarea>
 
-    <label class="wf-field">
-      <span>태그 (예: #JPOP #시티팝)</span>
-      <input type="text" name="tags" value="<?= htmlspecialchars($tagInput) ?>" placeholder="#태그 #태그">
-    </label>
+    <div class="wf-field">
+      <span>태그 (입력 후 Enter)</span>
+      <div class="taginput">
+        <input type="text" class="taginput__field" placeholder="예: JPOP 시티팝">
+        <input type="hidden" name="tags" value="<?= htmlspecialchars($tagInput) ?>">
+      </div>
+    </div>
 
     <label class="wf-field">
       <span>썸네일 (선택)</span>
@@ -178,5 +177,7 @@ require_once __DIR__ . '/header.php';
     </div>
   </form>
 </section>
+
+<script src="taginput.js"></script>
 
 <?php require_once __DIR__ . '/footer.php'; ?>

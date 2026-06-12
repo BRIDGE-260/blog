@@ -174,7 +174,7 @@ require_once __DIR__ . '/header.php';
   <p class="empty">비공개 글이거나 볼 수 있는 권한이 없어요.</p>
 <?php else: ?>
 
-  <article class="post">
+  <article class="post <?= empty($post['thumbnail_stored']) ? 'post--nothumb' : '' ?>">
     <?php if (!empty($post['thumbnail_stored'])): ?>
       <div class="post__thumb">
         <img src="uploads/<?= htmlspecialchars($post['thumbnail_stored']) ?>" alt="">
@@ -187,7 +187,7 @@ require_once __DIR__ . '/header.php';
     <h1 class="post__title"><?= htmlspecialchars($post['title']) ?></h1>
 
     <div class="post__meta">
-      <span><?= htmlspecialchars($post['nickname']) ?>님</span>
+      <a href="blog.php?id=<?= (int)$post['user_id'] ?>"><?= htmlspecialchars($post['nickname']) ?>님</a>
       <span><?= date('Y.m.d H:i', strtotime($post['created_at'])) ?> · 조회 <?= (int)$post['view_count'] ?></span>
     </div>
 
@@ -220,10 +220,14 @@ require_once __DIR__ . '/header.php';
   <!-- 이전/다음 글 -->
   <nav class="post-nav">
     <?php if ($prev): ?>
-      <a href="view.php?id=<?= (int)$prev['id'] ?>">‹ 이전글<br><b><?= htmlspecialchars($prev['title']) ?></b></a>
-    <?php else: ?><span></span><?php endif; ?>
+      <a href="view.php?id=<?= (int)$prev['id'] ?>"><span>‹ 이전 글</span><b><?= htmlspecialchars($prev['title']) ?></b></a>
+    <?php else: ?>
+      <div class="post-nav__empty"><span>‹ 이전 글</span><b>없음</b></div>
+    <?php endif; ?>
     <?php if ($next): ?>
-      <a class="r" href="view.php?id=<?= (int)$next['id'] ?>">다음글 ›<br><b><?= htmlspecialchars($next['title']) ?></b></a>
+      <a class="r" href="view.php?id=<?= (int)$next['id'] ?>"><span>다음 글 ›</span><b><?= htmlspecialchars($next['title']) ?></b></a>
+    <?php else: ?>
+      <div class="post-nav__empty r"><span>다음 글 ›</span><b>없음</b></div>
     <?php endif; ?>
   </nav>
 

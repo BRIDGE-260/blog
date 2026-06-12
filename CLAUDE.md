@@ -69,18 +69,40 @@ blog_schema.sql 로 생성, blog_sample_data.sql 로 샘플 데이터.
 - 블로그 뷰: 글 상세 + 공감 + 댓글 + 이전/다음 글 + 본인 글 수정/삭제
 
 ## 디자인 톤
-- 흰색 기반 + 뉴모피즘(부드러운 그림자), 포인트는 차분한 다크그레이(#2d3436).
-- 모바일 반응형 고려.
-- 사이드 메뉴 구조는 네이버 블로그/티스토리 참고.
+- 흰색 기반 + 플랫(은은한 드롭섀도) 카드, 포인트는 **탄색(#d4af7a)**.
+  (배경 #ededed, 본문 글자 #2d3436, 포인트/버튼 #d4af7a — auth 로그인 화면과 통일)
+- 공통 변수는 `style.css` 의 `:root` (`--accent` 등). auth 화면은 전용 `auth.css`.
+- 모바일 반응형 고려. 사이드 메뉴 구조는 네이버 블로그/티스토리 참고.
 
-## 현재까지 만든 파일
-- `db.php` — mysqli 접속 (완성)
-- `auth.php` — 로그인/회원가입 슬라이딩 폼 (완성). 로그인 성공 시 index.php 로 이동.
-- `blog_schema.sql`, `blog_sample_data.sql` — DB (완성)
+## 공통 구조 (include 패턴)
+- 일반 페이지: `session_start` → 로그인 검사 → (POST 처리) → `$pageTitle` 지정
+  → `require header.php` → 본문 → `require footer.php`.
+- 로그인 검사·`header('Location:..')` 리다이렉트는 **header.php include 전에** 할 것
+  (header.php 가 HTML 출력 시작하면 리다이렉트 불가).
+- 공통 파일: `db.php`(DB), `header.php`(head+상단바), `footer.php`, `style.css`.
 
-## 다음 할 일
-- `index.php` — 블로그 메인 (로그인 후 진입 페이지). 아직 없음.
-  (auth.php 가 로그인 성공 시 여기로 보냄 — 없으면 404)
+## 현재까지 만든 파일 (전부 완성, prepared statement 준수)
+- `db.php` — mysqli 접속
+- `header.php` / `footer.php` / `style.css` — 공통 레이아웃·스타일
+- `auth.php` (+`auth.css`) — 로그인/회원가입 슬라이딩 폼(탄색+사진). 성공 시 index.php
+- `index.php` — 블로그 메인: 이웃 새 글 + 인기 태그 + 정렬(최신/인기) + 검색 + 태그필터 + 페이징
+- `write.php` — 글쓰기: 카테고리/공개설정/태그(N:M)/썸네일 업로드/임시저장·발행
+- `view.php` — 글 상세: 조회수+1, 태그, 공감(likes 토글), 댓글(작성/본인삭제),
+  이전/다음 글, 공개범위 권한체크, 본인글 수정/삭제 진입
+- `modify.php` / `delete.php` — 글 수정(태그 재동기화·썸네일 교체)/삭제(확인 후 자식row·파일 정리)
+- `blog.php` — 내 블로그 메인: 사이드바(프로필·카테고리·방문자수) + 글목록 + 카테고리필터
+  + 이웃 추가/취소(neighbors) + 방문 카운트(visit_logs)
+- `neighbors.php` — 이웃 목록(내 이웃·서로이웃 / 나를 추가한 사람)
+- `notifications.php` — 내 소식: 내 글의 최근 댓글+공감 타임라인
+- `categories.php` — 고정 카테고리(주제) 목록 + 글쓰기에서 유저 카테고리로 매핑하는 헬퍼
+- `profile.php` — 프로필 수정(블로그제목/소개/성별)
+- `logout.php` — 로그아웃
+- ※ DB 9개 테이블 전부 사용 중. 이미지 업로드 폴더는 `uploads/`(자동 생성).
+
+## 다음 할 일 (후보)
+- 프로필 이미지 업로드(`profile_image_*` 컬럼은 아직 미사용)
+- 방문자 통계(visit_logs 추이) / 인기글 위젯 / 이웃 새 글 전용 페이지
+- `blog_schema.sql` / `blog_sample_data.sql` 파일은 레포에 아직 없음(DB엔 반영됨)
 
 ## 샘플 계정 (테스트용, 비밀번호는 직접 가입해서 만들어야 함 — 샘플은 해시 더미값)
 - 닉네임 예시: stephane_music, yujin_dev, mina_daily, hoonie_cinema

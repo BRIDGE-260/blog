@@ -26,6 +26,16 @@ require_once __DIR__ . '/db.php';
 $pageTitle = $pageTitle ?? 'MyBlog';
 // 로그인했으면 닉네임, 아니면 null
 $loginNickname = $_SESSION['nickname'] ?? null;
+
+// 상단바 아바타용 — 로그인 유저의 프로필 이미지(없으면 null)
+$loginAvatar = null;
+if (isset($_SESSION['user_id'])) {
+    $stmt = $conn->prepare("SELECT profile_image_stored FROM users WHERE id = ?");
+    $stmt->bind_param("i", $_SESSION['user_id']);
+    $stmt->execute();
+    $loginAvatar = $stmt->get_result()->fetch_assoc()['profile_image_stored'] ?? null;
+    $stmt->close();
+}
 ?>
 <!DOCTYPE html>
 <html lang="ko">
@@ -43,8 +53,19 @@ $loginNickname = $_SESSION['nickname'] ?? null;
     <?php if ($loginNickname): ?>
       <a href="write.php">글쓰기</a>
       <a href="blog.php?id=<?= (int)$_SESSION['user_id'] ?>">내 블로그</a>
+      <a href="bloggers.php">블로그 찾기</a>
       <a href="neighbors.php">이웃</a>
-      <span class="topbar__user"><?= htmlspecialchars($loginNickname) ?>님</span>
+      <a href="notifications.php">소식</a>
+      <a class="topbar__me" href="profile.php">
+        <span class="topbar__avatar">
+          <?php if (!empty($loginAvatar)): ?>
+            <img src="uploads/<?= htmlspecialchars($loginAvatar) ?>" alt="">
+          <?php else: ?>
+            <?= htmlspecialchars(mb_substr($loginNickname, 0, 1)) ?>
+          <?php endif; ?>
+        </span>
+        <span><?= htmlspecialchars($loginNickname) ?>님</span>
+      </a>
       <a href="logout.php">로그아웃</a>
     <?php else: ?>
       <a href="auth.php">로그인</a>

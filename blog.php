@@ -194,7 +194,10 @@ require_once __DIR__ . '/header.php';
         </form>
       <?php endif; ?>
 
-      <div class="profile__visit">오늘 <?= $todayVisit ?> · 전체 <?= $totalVisit ?></div>
+      <div class="profile__visit">
+        오늘 <?= $todayVisit ?> · 전체 <?= $totalVisit ?>
+        <?php if ($isOwner): ?><br><a href="stats.php">통계 보기</a><?php endif; ?>
+      </div>
     </div>
 
     <nav class="cat-list">
