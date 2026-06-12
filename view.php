@@ -109,13 +109,13 @@ if ($canView) {
 // 상세 데이터 (태그 / 공감 / 댓글 / 이전·다음) — 볼 수 있을 때만 조회
 $tags = []; $likeCount = 0; $likedByMe = false; $comments = []; $prev = $next = null;
 if ($canView) {
-    // 태그
+    // 태그 (id 포함 — 클릭 시 메인 태그 필터로 이동)
     $stmt = $conn->prepare(
-        "SELECT t.name FROM post_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.post_id = ?"
+        "SELECT t.id, t.name FROM post_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.post_id = ?"
     );
     $stmt->bind_param("i", $postId);
     $stmt->execute();
-    foreach ($stmt->get_result()->fetch_all(MYSQLI_ASSOC) as $r) $tags[] = $r['name'];
+    $tags = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
 
     // 공감 수 + 내가 눌렀는지
@@ -203,7 +203,7 @@ require_once __DIR__ . '/header.php';
     <?php if ($tags): ?>
       <div class="post__tags">
         <?php foreach ($tags as $t): ?>
-          <span class="tag">#<?= htmlspecialchars($t) ?></span>
+          <a class="tag" href="index.php?tag=<?= (int)$t['id'] ?>">#<?= htmlspecialchars($t['name']) ?></a>
         <?php endforeach; ?>
       </div>
     <?php endif; ?>

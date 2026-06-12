@@ -141,14 +141,17 @@ $offset     = ($page - 1) * $perPage;
 // 글 목록
 $stmt = $conn->prepare(
     "SELECT p.id, p.title, p.content, p.thumbnail_stored, p.view_count, p.created_at,
-            p.status, p.visibility, c.name AS category_name
+            p.status, p.visibility, c.name AS category_name,
+            (SELECT COUNT(*) FROM likes l    WHERE l.post_id = p.id) AS like_count,
+            (SELECT COUNT(*) FROM comments m WHERE m.post_id = p.id) AS comment_count
      FROM posts p
      LEFT JOIN categories c ON c.id = p.category_id
      WHERE $where
      ORDER BY p.created_at DESC
      LIMIT ? OFFSET ?"
 );
-$stmt->bind_param($types . 'ii', ...[...$params, $perPage, $offset]);
+$listParams = [...$params, $perPage, $offset];
+$stmt->bind_param($types . 'ii', ...$listParams);
 $stmt->execute();
 $posts = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
@@ -231,7 +234,7 @@ require_once __DIR__ . '/header.php';
               <p class="card__excerpt"><?= htmlspecialchars(mb_strimwidth(strip_tags($p['content']), 0, 70, '…')) ?></p>
               <div class="card__meta">
                 <span><?= date('Y.m.d', strtotime($p['created_at'])) ?></span>
-                <span>조회 <?= (int)$p['view_count'] ?></span>
+                <span>조회 <?= (int)$p['view_count'] ?> · ♥ <?= (int)$p['like_count'] ?> · 💬 <?= (int)$p['comment_count'] ?></span>
               </div>
             </div>
           </a>
