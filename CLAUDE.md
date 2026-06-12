@@ -125,6 +125,11 @@ blog_schema.sql 로 생성, blog_sample_data.sql 로 샘플 데이터.
 - POST에서: 체크된 id는 파일 @unlink 후 DELETE FROM post_images WHERE id=? AND post_id=?, 새 파일은 write.php의 업로드 루프 그대로 재사용
 
 - `blog_schema.sql` / `blog_sample_data.sql` 파일은 레포에 아직 없음(DB엔 반영됨)
+- 글 삭제해도 uploads 파일에 사진 안 지워지는거 같은데 확인해야함.
+- 블로그 찾기 탭 더 세분화 해야함. 이게 아이디어가 별로 없으면 이웃 탭이랑 합치는 것도 나쁘지 않음.
+- 글 쓸 때 본문에 파일 첨부 여러개 안됨. 하나씩 밖에 안되는데 수정해야함.
+- 글 수정 할 때 사진도 수정되게 만들어야 함.
+- 원래 사진은 db에 저장을 안 하고 따로 폴더에 저장하는건지 확인바람.
 
 ## 샘플 계정 (테스트용, 비밀번호는 직접 가입해서 만들어야 함 — 샘플은 해시 더미값)
 
