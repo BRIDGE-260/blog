@@ -1,0 +1,190 @@
+/* style.css — 일반 페이지(index 등) 공통 스타일.
+   auth.php 는 전용 디자인이라 auth.css 를 따로 씁니다. */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #eef0f3;
+  --surface: #f4f6f8;
+  --text: #2d3436;
+  --text-sub: #8a929b;
+  --accent: #2d3436;
+  --shadow-dark: #d1d4d9;
+  --shadow-light: #ffffff;
+}
+
+body {
+  font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── 상단바 ───────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 28px;
+  background: var(--surface);
+  box-shadow: 0 4px 12px var(--shadow-dark);
+}
+.topbar__brand {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: var(--text);
+  text-decoration: none;
+}
+.topbar__brand span { color: #b2bec3; }
+.topbar__nav {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 14px;
+}
+.topbar__nav a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+.topbar__user { color: var(--text-sub); }
+
+/* ── 본문 영역 ────────────────────────── */
+.page {
+  flex: 1;
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 40px 28px;
+}
+
+/* ── 환영 카드 (최소 index 용) ─────────── */
+.welcome {
+  background: var(--surface);
+  border-radius: 22px;
+  padding: 48px 40px;
+  text-align: center;
+  box-shadow: 10px 10px 22px var(--shadow-dark),
+             -10px -10px 22px var(--shadow-light);
+}
+.welcome h1 { font-size: 26px; margin-bottom: 12px; }
+.welcome p { color: var(--text-sub); line-height: 1.6; }
+
+/* ── 피드 헤더 + 검색 ─────────────────── */
+.feed-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.feed-head h1 { font-size: 24px; }
+.search { display: flex; gap: 8px; }
+.search input {
+  width: 220px;
+  border: none;
+  outline: none;
+  padding: 11px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: inset 4px 4px 8px var(--shadow-dark),
+              inset -4px -4px 8px var(--shadow-light);
+}
+.search button {
+  border: none;
+  padding: 0 20px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ── 글 카드 그리드 ───────────────────── */
+.feed {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 22px;
+}
+.card {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-radius: 18px;
+  overflow: hidden;
+  text-decoration: none;
+  color: var(--text);
+  box-shadow: 8px 8px 18px var(--shadow-dark),
+             -8px -8px 18px var(--shadow-light);
+  transition: transform 0.15s;
+}
+.card:hover { transform: translateY(-3px); }
+.card__thumb {
+  height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e3e6ea;
+  overflow: hidden;
+}
+.card__thumb img { width: 100%; height: 100%; object-fit: cover; }
+.card__noimg { color: var(--text-sub); font-size: 13px; }
+.card__body { padding: 16px 18px 18px; }
+.card__cat {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--accent);
+  background: #e7eaee;
+  padding: 3px 9px;
+  border-radius: 20px;
+  margin-bottom: 8px;
+}
+.card__title {
+  font-size: 17px;
+  margin-bottom: 6px;
+  line-height: 1.35;
+}
+.card__excerpt {
+  font-size: 13px;
+  color: var(--text-sub);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+.card__meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-sub);
+}
+
+/* ── 빈 상태 / 페이징 ─────────────────── */
+.empty {
+  text-align: center;
+  color: var(--text-sub);
+  padding: 60px 0;
+}
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  margin-top: 34px;
+  font-size: 14px;
+}
+.pager a { color: var(--accent); text-decoration: none; font-weight: 600; }
+.pager span { color: var(--text-sub); }
+
+/* ── 푸터 ─────────────────────────────── */
+.sitefooter {
+  text-align: center;
+  padding: 22px;
+  font-size: 12px;
+  color: var(--text-sub);
+}
