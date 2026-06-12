@@ -6,13 +6,10 @@
  */
 
 session_start();
-if (!isset($_SESSION['user_id'])) {        // 로그인 검사 먼저 (header 출력 전)
-    header('Location: auth.php');
-    exit;
-}
 require_once __DIR__ . '/db.php';
 
-$viewerId = $_SESSION['user_id'];
+$isLogin  = isset($_SESSION['user_id']);
+$viewerId = $_SESSION['user_id'] ?? 0;   // 게스트는 0 (작성/공감/댓글은 로그인 필요)
 $postId   = (int)($_GET['id'] ?? 0);
 
 // 글 + 작성자 닉네임 + 카테고리명 조회
@@ -52,7 +49,7 @@ $canView = $post && (
 // ============================================================
 // POST 처리 (공감/댓글) — 볼 수 있는 글에만, 처리 후 리다이렉트
 // ============================================================
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canView) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canView && $isLogin) {
     $action = $_POST['action'] ?? '';
 
     // 공감 토글: 이미 눌렀으면 취소, 아니면 추가
@@ -107,7 +104,7 @@ if ($canView) {
 }
 
 // 상세 데이터 (태그 / 공감 / 댓글 / 이전·다음) — 볼 수 있을 때만 조회
-$tags = []; $likeCount = 0; $likedByMe = false; $comments = []; $prev = $next = null;
+$tags = []; $images = []; $likeCount = 0; $likedByMe = false; $comments = []; $prev = $next = null;
 if ($canView) {
     // 태그 (id 포함 — 클릭 시 메인 태그 필터로 이동)
     $stmt = $conn->prepare(
@@ -116,6 +113,13 @@ if ($canView) {
     $stmt->bind_param("i", $postId);
     $stmt->execute();
     $tags = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    // 본문 이미지
+    $stmt = $conn->prepare("SELECT stored FROM post_images WHERE post_id = ? ORDER BY sort_order, id");
+    $stmt->bind_param("i", $postId);
+    $stmt->execute();
+    $images = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
 
     // 공감 수 + 내가 눌렀는지
@@ -200,6 +204,14 @@ require_once __DIR__ . '/header.php';
 
     <div class="post__content"><?= nl2br(htmlspecialchars($post['content'])) ?></div>
 
+    <?php if ($images): ?>
+      <div class="post__gallery">
+        <?php foreach ($images as $im): ?>
+          <img src="uploads/<?= htmlspecialchars($im['stored']) ?>" alt="">
+        <?php endforeach; ?>
+      </div>
+    <?php endif; ?>
+
     <?php if ($tags): ?>
       <div class="post__tags">
         <?php foreach ($tags as $t): ?>
@@ -209,12 +221,14 @@ require_once __DIR__ . '/header.php';
     <?php endif; ?>
 
     <!-- 공감 -->
-    <form class="like" method="post" action="view.php?id=<?= (int)$post['id'] ?>">
-      <input type="hidden" name="action" value="like">
-      <button type="submit" class="like-btn <?= $likedByMe ? 'on' : '' ?>">
-        ♥ 공감 <?= $likeCount ?>
-      </button>
-    </form>
+    <?php if ($isLogin): ?>
+      <form class="like" method="post" action="view.php?id=<?= (int)$post['id'] ?>">
+        <input type="hidden" name="action" value="like">
+        <button type="submit" class="like-btn <?= $likedByMe ? 'on' : '' ?>">♥ 공감 <?= $likeCount ?></button>
+      </form>
+    <?php else: ?>
+      <div class="like"><a class="like-btn" href="auth.php">♥ 공감 <?= $likeCount ?></a></div>
+    <?php endif; ?>
   </article>
 
   <!-- 이전/다음 글 -->
@@ -252,11 +266,15 @@ require_once __DIR__ . '/header.php';
       </div>
     <?php endforeach; ?>
 
-    <form class="comment-form" method="post" action="view.php?id=<?= (int)$post['id'] ?>">
-      <input type="hidden" name="action" value="comment">
-      <textarea name="content" rows="3" placeholder="댓글을 남겨보세요" required></textarea>
-      <button type="submit" class="btn-primary">등록</button>
-    </form>
+    <?php if ($isLogin): ?>
+      <form class="comment-form" method="post" action="view.php?id=<?= (int)$post['id'] ?>">
+        <input type="hidden" name="action" value="comment">
+        <textarea name="content" rows="3" placeholder="댓글을 남겨보세요" required></textarea>
+        <button type="submit" class="btn-primary">등록</button>
+      </form>
+    <?php else: ?>
+      <p class="comment-guest">댓글을 쓰려면 <a href="auth.php">로그인</a>하세요.</p>
+    <?php endif; ?>
   </section>
 
 <?php endif; ?>

@@ -113,7 +113,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->close();
         }
 
-        header('Location: view.php?id=' . $postId);
+        // 본문 이미지 여러 장 업로드 → post_images 에 저장
+        if (!empty($_FILES['images']['name'][0])) {
+            $imgAllowed = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+            $uploadDir  = __DIR__ . '/uploads';
+            if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
+            $order = 0;
+            for ($i = 0; $i < count($_FILES['images']['name']); $i++) {
+                if ($_FILES['images']['error'][$i] !== UPLOAD_ERR_OK) continue;
+                $ext = strtolower(pathinfo($_FILES['images']['name'][$i], PATHINFO_EXTENSION));
+                if (!in_array($ext, $imgAllowed, true)) continue;
+                $stored = uniqid('img_', true) . '.' . $ext;
+                if (move_uploaded_file($_FILES['images']['tmp_name'][$i], $uploadDir . '/' . $stored)) {
+                    $orig = basename($_FILES['images']['name'][$i]);
+                    $stmt = $conn->prepare("INSERT INTO post_images (post_id, original, stored, sort_order) VALUES (?,?,?,?)");
+                    $stmt->bind_param("issi", $postId, $orig, $stored, $order);
+                    $stmt->execute(); $stmt->close();
+                    $order++;
+                }
+            }
+        }
+
+        // 임시저장이면 글 관리(임시저장함)로, 발행이면 그 글로 이동
+        header('Location: ' . ($status === 'draft' ? 'manage.php?status=draft' : 'view.php?id=' . $postId));
         exit;
     }
 }
@@ -169,6 +191,11 @@ require_once __DIR__ . '/header.php';
     <label class="wf-field">
       <span>썸네일 (선택)</span>
       <input type="file" name="thumbnail" accept="image/*">
+    </label>
+
+    <label class="wf-field">
+      <span>본문 이미지 (여러 장 선택 가능)</span>
+      <input type="file" name="images[]" accept="image/*" multiple>
     </label>
 
     <div class="wf-actions">

@@ -36,6 +36,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->close();
     }
 
+    // 본문 이미지 파일 삭제 (post_images 행은 글 삭제 시 CASCADE 로 정리됨)
+    $stmt = $conn->prepare("SELECT stored FROM post_images WHERE post_id = ?");
+    $stmt->bind_param("i", $postId);
+    $stmt->execute();
+    foreach ($stmt->get_result()->fetch_all(MYSQLI_ASSOC) as $im) {
+        @unlink(__DIR__ . '/uploads/' . $im['stored']);
+    }
+    $stmt->close();
+
     // 글 삭제 (소유권 한 번 더)
     $stmt = $conn->prepare("DELETE FROM posts WHERE id = ? AND user_id = ?");
     $stmt->bind_param("ii", $postId, $userId);

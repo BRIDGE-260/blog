@@ -6,14 +6,11 @@
  */
 
 session_start();
-if (!isset($_SESSION['user_id'])) {
-    header('Location: auth.php');
-    exit;
-}
 require_once __DIR__ . '/db.php';
 
-$viewerId = $_SESSION['user_id'];
-$ownerId  = (int)($_GET['id'] ?? $viewerId);   // id 없으면 내 블로그
+$isLogin  = isset($_SESSION['user_id']);
+$viewerId = $_SESSION['user_id'] ?? 0;          // 게스트는 0
+$ownerId  = (int)($_GET['id'] ?? $viewerId);    // id 없으면 내 블로그
 
 // 블로그 주인 정보
 $stmt = $conn->prepare(
@@ -45,7 +42,7 @@ if (!$isOwner) {
 }
 
 // ── POST: 이웃 추가/취소 토글 ──────────
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'neighbor' && !$isOwner) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'neighbor' && !$isOwner && $isLogin) {
     if ($iAddedOwner) {
         $stmt = $conn->prepare("DELETE FROM neighbors WHERE user_id = ? AND neighbor_id = ?");
     } else {
@@ -185,7 +182,7 @@ require_once __DIR__ . '/header.php';
         <p class="profile__intro"><?= nl2br(htmlspecialchars($owner['intro'])) ?></p>
       <?php endif; ?>
 
-      <?php if (!$isOwner): ?>
+      <?php if ($isLogin && !$isOwner): ?>
         <form method="post" action="blog.php?id=<?= $ownerId ?>">
           <input type="hidden" name="action" value="neighbor">
           <button type="submit" class="<?= $iAddedOwner ? 'btn-ghost-dark' : 'btn-primary' ?>">
@@ -196,7 +193,7 @@ require_once __DIR__ . '/header.php';
 
       <div class="profile__visit">
         오늘 <?= $todayVisit ?> · 전체 <?= $totalVisit ?>
-        <?php if ($isOwner): ?><br><a href="stats.php">통계 보기</a><?php endif; ?>
+        <?php if ($isOwner): ?><br><a href="stats.php">통계 보기</a> · <a href="manage.php">글 관리</a> · <a href="liked.php">좋아요한 글</a><?php endif; ?>
       </div>
     </div>
 

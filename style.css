@@ -61,6 +61,15 @@ body {
   justify-content: center;
 }
 .topbar__avatar img { width: 100%; height: 100%; object-fit: cover; }
+.topbar__toggle {
+  display: none;
+  border: none;
+  background: none;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text);
+}
 
 /* ── 본문 영역 ────────────────────────── */
 .page {
@@ -465,6 +474,7 @@ body {
 .post__meta,
 .post__owner,
 .post__content,
+.post__gallery,
 .post__tags,
 .like { padding-left: 36px; padding-right: 36px; }
 .post__cat {
@@ -502,6 +512,8 @@ body {
   line-height: 1.85;
   color: #33373a;
 }
+.post__gallery { margin-top: 22px; max-width: 680px; display: flex; flex-direction: column; gap: 12px; }
+.post__gallery img { width: 100%; border-radius: 8px; display: block; }
 .post__tags { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 8px; }
 .tag { font-size: 13px; color: var(--text-sub); text-decoration: none; }
 .tag:hover { color: var(--accent); }
@@ -571,6 +583,8 @@ body {
   resize: vertical;
 }
 .comment-form textarea:focus { border-color: var(--accent); }
+.comment-guest { margin-top: 18px; font-size: 14px; color: var(--text-sub); }
+.comment-guest a { color: var(--accent); font-weight: 600; }
 
 /* 수정 폼 체크박스(썸네일 제거) */
 .wf-checkfield { display: flex; align-items: center; gap: 8px; }
@@ -795,6 +809,40 @@ body {
 .pf-avatar__img span { color: #fff; font-size: 30px; font-weight: 700; }
 .pf-avatar__field { flex: 1; display: flex; flex-direction: column; gap: 10px; }
 
+/* 내 글 관리 */
+.manage-tabs { display: flex; gap: 18px; margin-bottom: 22px; font-size: 14px; }
+.manage-tabs a { color: var(--text-sub); text-decoration: none; }
+.manage-tabs a.on { color: var(--accent); font-weight: 700; }
+.manage-list { list-style: none; }
+.manage-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 15px 18px;
+  margin-bottom: 10px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05);
+}
+.manage-item__main { flex: 1; min-width: 0; }
+.manage-item__title { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.manage-item__title a {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.manage-item__meta { font-size: 12px; color: var(--text-sub); }
+.badge { font-size: 11px; padding: 3px 9px; border-radius: 10px; flex-shrink: 0; }
+.badge--draft { background: #fdebd0; color: #b9770e; }
+.badge--pub { background: #e9eef3; color: #56657a; }
+.manage-item__act { display: flex; gap: 12px; font-size: 13px; flex-shrink: 0; }
+.manage-item__act a { color: var(--text-sub); text-decoration: none; }
+.manage-item__act a:hover { color: var(--accent); }
+
 /* ── 방문자 통계 ──────────────────────── */
 .stats h1 { font-size: 24px; font-weight: 700; margin-bottom: 20px; }
 .stats-sum { display: flex; gap: 16px; margin-bottom: 30px; }
@@ -851,4 +899,43 @@ body {
   padding: 22px;
   font-size: 12px;
   color: var(--text-sub);
+}
+
+/* ── 모바일 반응형 ────────────────────── */
+@media (max-width: 860px) {
+  .topbar { flex-wrap: wrap; padding: 14px 18px; }
+  .topbar__toggle { display: block; }
+  .topbar__nav {
+    display: none;
+    order: 3;
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    margin-top: 10px;
+  }
+  .topbar__nav.open { display: flex; }
+  .topbar__nav a,
+  .topbar__me { padding: 11px 4px; }
+  .topbar__me { order: -1; }   /* 내 계정을 메뉴 맨 위로 */
+
+  .page { padding: 28px 18px; }
+
+  .hero { height: 210px; }
+  .hero__inner { padding: 22px; }
+  .hero__title { font-size: 22px; }
+
+  .post__cat, .post__title, .post__meta, .post__owner,
+  .post__content, .post__gallery, .post__tags, .like { padding-left: 20px; padding-right: 20px; }
+  .post__title { font-size: 22px; }
+  .post--nothumb { padding-top: 28px; }
+}
+
+@media (max-width: 560px) {
+  .feed-head { align-items: stretch; }
+  .search { width: 100%; }
+  .search input { flex: 1; width: auto; }
+  .manage-item { flex-wrap: wrap; }
+  .nbr { flex-wrap: wrap; }
+  .stats-sum { flex-direction: column; }
 }

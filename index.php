@@ -6,14 +6,10 @@
  */
 
 session_start();
-if (!isset($_SESSION['user_id'])) {        // 로그인 검사 먼저 (header 출력 전)
-    header('Location: auth.php');
-    exit;
-}
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/categories.php';
 
-$viewerId = $_SESSION['user_id'];
+$viewerId = $_SESSION['user_id'] ?? 0;   // 비로그인(게스트)도 메인 열람 가능
 $q        = trim($_GET['q'] ?? '');
 $cat      = $_GET['cat'] ?? '';                 // 카테고리(주제) 이름 필터
 $tagId    = (int)($_GET['tag'] ?? 0);
@@ -68,10 +64,13 @@ if ($tagId > 0) {
     $types   .= 'i';
 }
 if ($q !== '') {
-    $where   .= " AND (p.title LIKE ? OR p.content LIKE ?)";
+    // 제목·내용 + 태그명까지 검색
+    $where   .= " AND (p.title LIKE ? OR p.content LIKE ?
+                  OR EXISTS(SELECT 1 FROM post_tags pt2 JOIN tags t2 ON t2.id = pt2.tag_id
+                            WHERE pt2.post_id = p.id AND t2.name LIKE ?))";
     $like     = '%' . $q . '%';
-    $params[] = $like; $params[] = $like;
-    $types   .= 'ss';
+    $params[] = $like; $params[] = $like; $params[] = $like;
+    $types   .= 'sss';
 }
 if ($cat !== '' && in_array($cat, $FIXED_CATEGORIES, true)) {
     // 주제는 유저별 카테고리라 이름으로 매칭 (EXISTS 면 count/list 쿼리 둘 다에서 동작)

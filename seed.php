@@ -12,7 +12,7 @@ header('Content-Type: text/plain; charset=utf-8');
 
 // ── 1) 전부 비우기 ─────────────────────
 $conn->query("SET FOREIGN_KEY_CHECKS=0");
-foreach (['post_tags','comments','likes','neighbors','visit_logs','posts','tags','categories','users'] as $t) {
+foreach (['post_images','post_tags','comments','likes','neighbors','visit_logs','posts','tags','categories','users'] as $t) {
     $conn->query("TRUNCATE TABLE $t");
 }
 $conn->query("SET FOREIGN_KEY_CHECKS=1");

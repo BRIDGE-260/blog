@@ -97,6 +97,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 <body>
 
+<a class="auth-home" href="index.php">← 메인으로</a>
+
 <!-- $mode 가 register 면 s--signup 클래스를 줘서 회원가입 화면이 먼저 보이게 함 -->
 <div class="cont <?= $mode === 'register' ? 's--signup' : '' ?>">
 
