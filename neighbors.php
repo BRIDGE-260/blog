@@ -1,8 +1,8 @@
 <?php
 /**
- * neighbors.php — 이웃 목록.
- *   ① 내 이웃(내가 추가한 사람, 서로이웃 표시 + 취소)
- *   ② 나를 추가한 이웃(아직 내가 안 추가 → 추가 가능)
+ * neighbors.php — 이웃 + 블로그 찾기 (탭 통합).
+ *   tab=neighbors(기본): ① 내 이웃(서로이웃 표시·취소) ② 나를 추가한 이웃(추가 가능)
+ *   tab=find          : 블로그 찾기 — 전체 사용자 + 검색(닉네임/제목) + 정렬 + 이웃 추가/취소
  */
 
 session_start();
@@ -13,6 +13,7 @@ if (!isset($_SESSION['user_id'])) {
 require_once __DIR__ . '/db.php';
 
 $viewerId = $_SESSION['user_id'];
+$tab = ($_GET['tab'] ?? '') === 'find' ? 'find' : 'neighbors';
 
 // ── POST: 이웃 추가/취소 ───────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -30,90 +31,192 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->close();
         }
     }
-    header('Location: neighbors.php');
+    // 보던 탭(+검색/정렬)으로 되돌아가기
+    $back = 'neighbors.php';
+    if (($_POST['rtab'] ?? '') === 'find') {
+        $params = ['tab' => 'find'];
+        if (!empty($_POST['rq']))    $params['q']    = $_POST['rq'];
+        if (!empty($_POST['rsort'])) $params['sort'] = $_POST['rsort'];
+        $back .= '?' . http_build_query($params);
+    }
+    header('Location: ' . $back);
     exit;
 }
 
-// ① 내 이웃 (서로이웃 여부 mutual 포함)
-$stmt = $conn->prepare(
-    "SELECT u.id, u.nickname, u.blog_title, u.profile_image_stored,
-            EXISTS(SELECT 1 FROM neighbors r WHERE r.user_id = u.id AND r.neighbor_id = ?) AS mutual
-     FROM neighbors n
-     JOIN users u ON u.id = n.neighbor_id
-     WHERE n.user_id = ?
-     ORDER BY u.nickname"
-);
-$stmt->bind_param("ii", $viewerId, $viewerId);
-$stmt->execute();
-$myNeighbors = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-$stmt->close();
+// ============================================================
+// 데이터 조회 — 활성 탭에 맞춰
+// ============================================================
+$myNeighbors = $addedMe = $users = [];
+$q = trim($_GET['q'] ?? '');
+$sort = $_GET['sort'] ?? 'posts';
 
-// ② 나를 추가했지만 내가 아직 안 추가한 사람
-$stmt = $conn->prepare(
-    "SELECT u.id, u.nickname, u.blog_title, u.profile_image_stored
-     FROM neighbors n
-     JOIN users u ON u.id = n.user_id
-     WHERE n.neighbor_id = ?
-       AND NOT EXISTS(SELECT 1 FROM neighbors r WHERE r.user_id = ? AND r.neighbor_id = u.id)
-     ORDER BY u.nickname"
-);
-$stmt->bind_param("ii", $viewerId, $viewerId);
-$stmt->execute();
-$addedMe = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-$stmt->close();
+if ($tab === 'neighbors') {
+    // ① 내 이웃 (서로이웃 여부 mutual 포함)
+    $stmt = $conn->prepare(
+        "SELECT u.id, u.nickname, u.blog_title, u.profile_image_stored,
+                EXISTS(SELECT 1 FROM neighbors r WHERE r.user_id = u.id AND r.neighbor_id = ?) AS mutual
+         FROM neighbors n
+         JOIN users u ON u.id = n.neighbor_id
+         WHERE n.user_id = ?
+         ORDER BY u.nickname"
+    );
+    $stmt->bind_param("ii", $viewerId, $viewerId);
+    $stmt->execute();
+    $myNeighbors = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
 
-$pageTitle = '이웃 · MyBlog';
+    // ② 나를 추가했지만 내가 아직 안 추가한 사람
+    $stmt = $conn->prepare(
+        "SELECT u.id, u.nickname, u.blog_title, u.profile_image_stored
+         FROM neighbors n
+         JOIN users u ON u.id = n.user_id
+         WHERE n.neighbor_id = ?
+           AND NOT EXISTS(SELECT 1 FROM neighbors r WHERE r.user_id = ? AND r.neighbor_id = u.id)
+         ORDER BY u.nickname"
+    );
+    $stmt->bind_param("ii", $viewerId, $viewerId);
+    $stmt->execute();
+    $addedMe = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+} else {
+    // 블로그 찾기 — 검색어 + 정렬(화이트리스트로 안전하게)
+    $orderMap = [
+        'posts'  => 'post_count DESC, u.nickname',
+        'recent' => 'u.created_at DESC',
+        'name'   => 'u.nickname',
+    ];
+    $order = $orderMap[$sort] ?? $orderMap['posts'];
+
+    $sql = "SELECT u.id, u.nickname, u.blog_title, u.profile_image_stored,
+                   (SELECT COUNT(*) FROM posts p
+                    WHERE p.user_id = u.id AND p.status='published' AND p.visibility='all') AS post_count,
+                   EXISTS(SELECT 1 FROM neighbors n WHERE n.user_id = ? AND n.neighbor_id = u.id) AS is_neighbor
+            FROM users u
+            WHERE u.id <> ?";
+    $types  = "ii";
+    $params = [$viewerId, $viewerId];
+    if ($q !== '') {
+        $sql .= " AND (u.nickname LIKE ? OR u.blog_title LIKE ?)";
+        $like = '%' . $q . '%';
+        $types  .= "ss";
+        $params[] = $like;
+        $params[] = $like;
+    }
+    $sql .= " ORDER BY $order";
+
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param($types, ...$params);
+    $stmt->execute();
+    $users = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+}
+
+$pageTitle = ($tab === 'find' ? '블로그 찾기' : '이웃') . ' · MyBlog';
 require_once __DIR__ . '/header.php';
 
-/** 이웃 한 명을 카드로 출력하는 헬퍼 */
-function neighborCard($u, $buttonAction, $buttonLabel, $buttonClass, $mutual = false) {
+/**
+ * 사용자 한 명을 카드로 출력.
+ *   $u       : 사용자 row
+ *   $action  : 'add' | 'cancel'
+ *   $label   : 버튼 글자
+ *   $class   : 버튼 클래스
+ *   $opts    : ['mutual'=>bool, 'meta'=>'글 3', 'rtab'=>'find', 'rq'=>..., 'rsort'=>...]
+ */
+function userCard($u, $action, $label, $class, $opts = []) {
     $img = !empty($u['profile_image_stored'])
         ? '<img src="uploads/' . htmlspecialchars($u['profile_image_stored']) . '" alt="">'
         : '<span>' . htmlspecialchars(mb_substr($u['nickname'], 0, 1)) . '</span>';
     $title = $u['blog_title'] ?: $u['nickname'] . '님의 블로그';
+    $nick  = htmlspecialchars($u['nickname']);
+    if (!empty($opts['meta'])) $nick .= ' · ' . htmlspecialchars($opts['meta']);
     ?>
     <div class="nbr">
       <a class="nbr__main" href="blog.php?id=<?= (int)$u['id'] ?>">
         <div class="nbr__img"><?= $img ?></div>
         <div>
           <div class="nbr__title"><?= htmlspecialchars($title) ?>
-            <?php if ($mutual): ?><em class="nbr__mutual">서로이웃</em><?php endif; ?>
+            <?php if (!empty($opts['mutual'])): ?><em class="nbr__mutual">서로이웃</em><?php endif; ?>
           </div>
-          <div class="nbr__nick"><?= htmlspecialchars($u['nickname']) ?></div>
+          <div class="nbr__nick"><?= $nick ?></div>
         </div>
       </a>
       <form method="post" action="neighbors.php">
         <input type="hidden" name="target" value="<?= (int)$u['id'] ?>">
-        <input type="hidden" name="action" value="<?= $buttonAction ?>">
-        <button type="submit" class="<?= $buttonClass ?>"><?= $buttonLabel ?></button>
+        <input type="hidden" name="action" value="<?= $action ?>">
+        <input type="hidden" name="rtab"   value="<?= htmlspecialchars($opts['rtab']  ?? '') ?>">
+        <input type="hidden" name="rq"      value="<?= htmlspecialchars($opts['rq']    ?? '') ?>">
+        <input type="hidden" name="rsort"   value="<?= htmlspecialchars($opts['rsort'] ?? '') ?>">
+        <button type="submit" class="<?= $class ?>"><?= $label ?></button>
       </form>
     </div>
     <?php
 }
 ?>
 
-<section class="nbr-sec">
-  <h1>이웃 <?= count($myNeighbors) ?></h1>
-  <?php if (!$myNeighbors): ?>
-    <p class="empty">아직 추가한 이웃이 없어요. 다른 블로그에서 "이웃 추가"를 눌러보세요.</p>
-  <?php else: ?>
-    <div class="nbr-list">
-      <?php foreach ($myNeighbors as $u):
-          neighborCard($u, 'cancel', '이웃 취소', 'btn-ghost-dark', $u['mutual']);
-      endforeach; ?>
-    </div>
-  <?php endif; ?>
-</section>
+<nav class="nbr-tabs">
+  <a class="<?= $tab === 'neighbors' ? 'on' : '' ?>" href="neighbors.php">내 이웃</a>
+  <a class="<?= $tab === 'find' ? 'on' : '' ?>" href="neighbors.php?tab=find">블로그 찾기</a>
+</nav>
 
-<?php if ($addedMe): ?>
+<?php if ($tab === 'neighbors'): ?>
+
   <section class="nbr-sec">
-    <h2 class="sec-title">나를 추가한 이웃</h2>
-    <div class="nbr-list">
-      <?php foreach ($addedMe as $u):
-          neighborCard($u, 'add', '이웃 추가', 'btn-primary');
-      endforeach; ?>
-    </div>
+    <h1>이웃 <?= count($myNeighbors) ?></h1>
+    <?php if (!$myNeighbors): ?>
+      <p class="empty">아직 추가한 이웃이 없어요. "블로그 찾기" 탭에서 이웃을 추가해보세요.</p>
+    <?php else: ?>
+      <div class="nbr-list">
+        <?php foreach ($myNeighbors as $u):
+            userCard($u, 'cancel', '이웃 취소', 'btn-ghost-dark', ['mutual' => $u['mutual']]);
+        endforeach; ?>
+      </div>
+    <?php endif; ?>
   </section>
+
+  <?php if ($addedMe): ?>
+    <section class="nbr-sec">
+      <h2 class="sec-title">나를 추가한 이웃</h2>
+      <div class="nbr-list">
+        <?php foreach ($addedMe as $u):
+            userCard($u, 'add', '이웃 추가', 'btn-primary');
+        endforeach; ?>
+      </div>
+    </section>
+  <?php endif; ?>
+
+<?php else: ?>
+
+  <section class="nbr-sec">
+    <h1>블로그 찾기</h1>
+
+    <form class="nbr-search" method="get" action="neighbors.php">
+      <input type="hidden" name="tab" value="find">
+      <input type="text" name="q" value="<?= htmlspecialchars($q) ?>"
+             placeholder="닉네임 또는 블로그 제목 검색">
+      <select name="sort" onchange="this.form.submit()">
+        <option value="posts"  <?= $sort === 'posts'  ? 'selected' : '' ?>>글 많은 순</option>
+        <option value="recent" <?= $sort === 'recent' ? 'selected' : '' ?>>최신 가입 순</option>
+        <option value="name"   <?= $sort === 'name'   ? 'selected' : '' ?>>이름 순</option>
+      </select>
+      <button type="submit" class="btn-primary">검색</button>
+    </form>
+
+    <?php if (!$users): ?>
+      <p class="empty"><?= $q !== '' ? '검색 결과가 없어요.' : '아직 다른 사용자가 없어요.' ?></p>
+    <?php else: ?>
+      <div class="nbr-list">
+        <?php foreach ($users as $u):
+            $rd = ['rtab' => 'find', 'rq' => $q, 'rsort' => $sort, 'meta' => '글 ' . (int)$u['post_count']];
+            if ($u['is_neighbor']) {
+                userCard($u, 'cancel', '이웃 취소', 'btn-ghost-dark', $rd);
+            } else {
+                userCard($u, 'add', '이웃 추가', 'btn-primary', $rd);
+            }
+        endforeach; ?>
+      </div>
+    <?php endif; ?>
+  </section>
+
 <?php endif; ?>
 
 <?php require_once __DIR__ . '/footer.php'; ?>

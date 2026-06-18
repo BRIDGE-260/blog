@@ -134,8 +134,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        // 임시저장이면 글 관리(임시저장함)로, 발행이면 그 글로 이동
-        header('Location: ' . ($status === 'draft' ? 'manage.php?status=draft' : 'view.php?id=' . $postId));
+        // 임시저장이면 내 블로그 임시저장 탭으로, 발행이면 그 글로 이동
+        header('Location: ' . ($status === 'draft'
+            ? 'blog.php?id=' . $userId . '&status=draft'
+            : 'view.php?id=' . $postId));
         exit;
     }
 }

@@ -99,17 +99,37 @@ $stmt->execute();
 $totalVisit = (int)$stmt->get_result()->fetch_assoc()['total'];
 $stmt->close();
 
+// 본인 블로그면 상태별 개수 (전체/발행/임시저장 탭용)
+$statusCnt = ['all' => 0, 'published' => 0, 'draft' => 0];
+if ($isOwner) {
+    $stmt = $conn->prepare("SELECT status, COUNT(*) AS c FROM posts WHERE user_id = ? GROUP BY status");
+    $stmt->bind_param("i", $ownerId);
+    $stmt->execute();
+    foreach ($stmt->get_result()->fetch_all(MYSQLI_ASSOC) as $r) $statusCnt[$r['status']] = (int)$r['c'];
+    $stmt->close();
+    $statusCnt['all'] = $statusCnt['published'] + $statusCnt['draft'];
+}
+
 // ── 글 목록 조건 ───────────────────────
 $cat     = (int)($_GET['cat'] ?? 0);
 $perPage = 6;
 $page    = max(1, (int)($_GET['page'] ?? 1));
+
+// 본인일 때만 상태 필터 (방문자는 항상 발행글만)
+$status = $_GET['status'] ?? 'all';
+if (!in_array($status, ['all', 'published', 'draft'], true)) $status = 'all';
 
 $where  = "p.user_id = ?";
 $params = [$ownerId];
 $types  = "i";
 
 if ($isOwner) {
-    // 본인: 임시저장 포함 전부
+    // 본인: 임시저장 포함 전부 (상태 탭 선택 시 그 상태만)
+    if ($status !== 'all') {
+        $where   .= " AND p.status = ?";
+        $params[] = $status;
+        $types   .= "s";
+    }
 } else {
     // 방문자: 발행 + (전체공개 또는 이웃공개[이웃일 때])
     if ($isNeighborRel) {
@@ -153,10 +173,11 @@ $stmt->execute();
 $posts = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
-// 페이징 URL (id·cat 유지)
-function blogUrl($n, $ownerId, $cat) {
+// 페이징 URL (id·cat·status 유지)
+function blogUrl($n, $ownerId, $cat, $status = 'all') {
     $qs = ['id' => $ownerId, 'page' => $n];
-    if ($cat > 0) $qs['cat'] = $cat;
+    if ($cat > 0)            $qs['cat']    = $cat;
+    if ($status !== 'all')   $qs['status'] = $status;
     return 'blog.php?' . http_build_query($qs);
 }
 
@@ -193,7 +214,7 @@ require_once __DIR__ . '/header.php';
 
       <div class="profile__visit">
         오늘 <?= $todayVisit ?> · 전체 <?= $totalVisit ?>
-        <?php if ($isOwner): ?><br><a href="stats.php">통계 보기</a> · <a href="manage.php">글 관리</a> · <a href="liked.php">좋아요한 글</a><?php endif; ?>
+        <?php if ($isOwner): ?><br><a href="stats.php">통계 보기</a> · <a href="liked.php">좋아요한 글</a><?php endif; ?>
       </div>
     </div>
 
@@ -211,11 +232,20 @@ require_once __DIR__ . '/header.php';
 
   <!-- 글 목록 -->
   <main class="blog-main">
+    <?php if ($isOwner): ?>
+      <nav class="manage-tabs">
+        <a class="<?= $status === 'all'       ? 'on' : '' ?>" href="<?= blogUrl(1, $ownerId, $cat, 'all') ?>">전체 <?= $statusCnt['all'] ?></a>
+        <a class="<?= $status === 'published' ? 'on' : '' ?>" href="<?= blogUrl(1, $ownerId, $cat, 'published') ?>">발행 <?= $statusCnt['published'] ?></a>
+        <a class="<?= $status === 'draft'     ? 'on' : '' ?>" href="<?= blogUrl(1, $ownerId, $cat, 'draft') ?>">임시저장 <?= $statusCnt['draft'] ?></a>
+      </nav>
+    <?php endif; ?>
+
     <?php if (!$posts): ?>
-      <p class="empty">아직 글이 없어요.</p>
+      <p class="empty"><?= ($isOwner && $status === 'draft') ? '임시저장한 글이 없어요.' : '아직 글이 없어요.' ?></p>
     <?php else: ?>
       <div class="feed">
         <?php foreach ($posts as $p): ?>
+          <?php if ($isOwner): ?><div class="card-wrap"><?php endif; ?>
           <a class="card" href="view.php?id=<?= (int)$p['id'] ?>">
             <div class="card__thumb">
               <?php if (!empty($p['thumbnail_stored'])): ?>
@@ -238,16 +268,23 @@ require_once __DIR__ . '/header.php';
               </div>
             </div>
           </a>
+          <?php if ($isOwner): ?>
+            <div class="card-actions">
+              <a href="modify.php?id=<?= (int)$p['id'] ?>">수정</a>
+              <a href="delete.php?id=<?= (int)$p['id'] ?>">삭제</a>
+            </div>
+          </div><!-- .card-wrap -->
+          <?php endif; ?>
         <?php endforeach; ?>
       </div>
 
       <nav class="pager">
         <?php if ($page > 1): ?>
-          <a href="<?= blogUrl($page - 1, $ownerId, $cat) ?>">‹ 이전</a>
+          <a href="<?= blogUrl($page - 1, $ownerId, $cat, $status) ?>">‹ 이전</a>
         <?php endif; ?>
         <span><?= $page ?> / <?= $totalPages ?></span>
         <?php if ($page < $totalPages): ?>
-          <a href="<?= blogUrl($page + 1, $ownerId, $cat) ?>">다음 ›</a>
+          <a href="<?= blogUrl($page + 1, $ownerId, $cat, $status) ?>">다음 ›</a>
         <?php endif; ?>
       </nav>
     <?php endif; ?>

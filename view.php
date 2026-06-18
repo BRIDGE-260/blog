@@ -81,6 +81,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canView && $isLogin) {
         }
     }
 
+    // 댓글 수정 (본인 것만)
+    elseif ($action === 'comment_edit') {
+        $commentId = (int)($_POST['comment_id'] ?? 0);
+        $content   = trim($_POST['content'] ?? '');
+        if ($content !== '') {
+            $stmt = $conn->prepare("UPDATE comments SET content = ? WHERE id = ? AND user_id = ?");
+            $stmt->bind_param("sii", $content, $commentId, $viewerId);
+            $stmt->execute();
+            $stmt->close();
+        }
+    }
+
     // 댓글 삭제 (본인 것만)
     elseif ($action === 'comment_delete') {
         $commentId = (int)($_POST['comment_id'] ?? 0);
@@ -94,13 +106,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canView && $isLogin) {
     exit;
 }
 
-// 볼 수 있는 글이면 조회수 +1
+// 볼 수 있는 글이면 조회수 +1 (단, 본인 글 제외 + 같은 세션에선 1회만 — 새로고침 중복 방지)
 if ($canView) {
-    $stmt = $conn->prepare("UPDATE posts SET view_count = view_count + 1 WHERE id = ?");
-    $stmt->bind_param("i", $postId);
-    $stmt->execute();
-    $stmt->close();
-    $post['view_count'] += 1;   // 화면에 즉시 반영
+    if (!isset($_SESSION['viewed'])) $_SESSION['viewed'] = [];
+    if (!$isOwner && empty($_SESSION['viewed'][$postId])) {
+        $stmt = $conn->prepare("UPDATE posts SET view_count = view_count + 1 WHERE id = ?");
+        $stmt->bind_param("i", $postId);
+        $stmt->execute();
+        $stmt->close();
+        $_SESSION['viewed'][$postId] = true;
+        $post['view_count'] += 1;   // 화면에 즉시 반영
+    }
 }
 
 // 상세 데이터 (태그 / 공감 / 댓글 / 이전·다음) — 볼 수 있을 때만 조회
@@ -257,11 +273,22 @@ require_once __DIR__ . '/header.php';
         </div>
         <p class="comment__body"><?= nl2br(htmlspecialchars($cm['content'])) ?></p>
         <?php if ($cm['user_id'] == $viewerId): ?>
-          <form method="post" action="view.php?id=<?= (int)$post['id'] ?>" class="comment__del">
-            <input type="hidden" name="action" value="comment_delete">
-            <input type="hidden" name="comment_id" value="<?= (int)$cm['id'] ?>">
-            <button type="submit">삭제</button>
-          </form>
+          <div class="comment__actions">
+            <details class="comment__edit">
+              <summary>수정</summary>
+              <form method="post" action="view.php?id=<?= (int)$post['id'] ?>">
+                <input type="hidden" name="action" value="comment_edit">
+                <input type="hidden" name="comment_id" value="<?= (int)$cm['id'] ?>">
+                <textarea name="content" rows="2" required><?= htmlspecialchars($cm['content']) ?></textarea>
+                <button type="submit" class="btn-primary">저장</button>
+              </form>
+            </details>
+            <form method="post" action="view.php?id=<?= (int)$post['id'] ?>" class="comment__del">
+              <input type="hidden" name="action" value="comment_delete">
+              <input type="hidden" name="comment_id" value="<?= (int)$cm['id'] ?>">
+              <button type="submit">삭제</button>
+            </form>
+          </div>
         <?php endif; ?>
       </div>
     <?php endforeach; ?>

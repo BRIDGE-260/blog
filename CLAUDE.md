@@ -95,7 +95,7 @@ blog_schema.sql 로 생성, blog_sample_data.sql 로 샘플 데이터.
 - 공통 파일: `db.php`(DB), `header.php`(head+상단바), `footer.php`, `style.css`.
 - 공개 페이지(비로그인 열람 가능): `index.php`, `view.php`, `blog.php`.
   게스트는 viewer id 를 0 으로 두고, 글쓰기·공감·댓글·이웃 등 "행동"만 `$isLogin` 으로 로그인 요구.
-  그 외 페이지(write/modify/delete/manage/profile/stats/notifications/neighbors/neighbor_posts/bloggers/liked)는 상단에서 로그인 검사 후 auth.php 로 리다이렉트.
+  그 외 페이지(write/modify/delete/manage/profile/password/stats/notifications/neighbors/neighbor_posts/bloggers/liked)는 상단에서 로그인 검사 후 auth.php 로 리다이렉트.
 
 ## 현재까지 만든 파일 (전부 완성, prepared statement 준수)
 
@@ -109,27 +109,50 @@ blog_schema.sql 로 생성, blog_sample_data.sql 로 샘플 데이터.
 - `modify.php` / `delete.php` — 글 수정(태그 재동기화·썸네일 교체)/삭제(확인 후 자식row·파일 정리)
 - `blog.php` — 내 블로그 메인: 사이드바(프로필·카테고리·방문자수) + 글목록 + 카테고리필터
   - 이웃 추가/취소(neighbors) + 방문 카운트(visit_logs)
-- `neighbors.php` — 이웃 목록(내 이웃·서로이웃 / 나를 추가한 사람)
+  - 본인 보기일 때 글 관리 기능 통합: 상태 탭(전체/발행/임시저장 + 개수) + 카드별 수정/삭제 버튼
+- `manage.php` — 내 글 관리 화면은 blog.php 로 통합됨. 이제 `blog.php?id=내id&status=..` 로 리다이렉트만
+- `neighbors.php` — 이웃 + 블로그 찾기(탭 통합): `내 이웃`(서로이웃/취소·나를 추가한 사람) /
+  `블로그 찾기`(tab=find: 전체 사용자 + 검색(닉네임·제목) + 정렬(글많은/최신가입/이름) + 이웃추가)
+- `bloggers.php` — 이제 `neighbors.php?tab=find` 로 리다이렉트만 (찾기 화면은 neighbors.php 가 담당)
 - `notifications.php` — 내 소식: 내 글의 최근 댓글+공감 타임라인
 - `categories.php` — 고정 카테고리(주제) 목록 + 글쓰기에서 유저 카테고리로 매핑하는 헬퍼
-- `profile.php` — 프로필 수정(블로그제목/소개/성별)
+- `profile.php` — 프로필 수정(블로그제목/소개/성별/프로필이미지) + 비밀번호 변경 진입
+- `password.php` — 비밀번호 변경: 현재 비번 확인(password_verify) → 새 비번 저장(password_hash)
 - `logout.php` — 로그아웃
 - ※ DB 9개 테이블 전부 사용 중. 이미지 업로드 폴더는 `uploads/`(자동 생성).
 
 ## 다음 할 일 (후보)
 
-### 다음에 이어서 할 때 (modify 이미지 편집) 메모:
+### 기능 아이디어 목록 (후보)
 
-- 상단에서 SELECT id, stored, original FROM post_images WHERE post_id=? 로 기존 이미지 조회
-- 폼에 기존 이미지 썸네일 + 각자 <input type="checkbox" name="remove_images[]" value="이미지id"> (제거용) + <input type="file" name="images[]" multiple> (추가용)
-- POST에서: 체크된 id는 파일 @unlink 후 DELETE FROM post_images WHERE id=? AND post_id=?, 새 파일은 write.php의 업로드 루프 그대로 재사용
+바로 할 만한 것(작은 작업, 기존 테이블로 가능):
+- ✅ 댓글 수정 — view.php 본인 댓글 수정(접이식 폼, action=comment_edit). (완료)
+- ✅ 조회수 중복 카운트 방지 — view.php 세션 기준 1회 + 본인 글 제외. (완료)
+- 공감 누른 사람 목록 — 글에서 ♥ 누른 사람 보기 (likes 테이블 그대로).
 
-- `blog_schema.sql` / `blog_sample_data.sql` 파일은 레포에 아직 없음(DB엔 반영됨)
-- 글 삭제해도 uploads 파일에 사진 안 지워지는거 같은데 확인해야함.
-- 블로그 찾기 탭 더 세분화 해야함. 이게 아이디어가 별로 없으면 이웃 탭이랑 합치는 것도 나쁘지 않음.
-- 글 쓸 때 본문에 파일 첨부 여러개 안됨. 하나씩 밖에 안되는데 수정해야함.
-- 글 수정 할 때 사진도 수정되게 만들어야 함.
-- 원래 사진은 db에 저장을 안 하고 따로 폴더에 저장하는건지 확인바람.
+계정/보안:
+- ✅ 비밀번호 변경 — password.php (password_verify → password_hash). (완료)
+- 회원 탈퇴 — 계정 + 내 글·댓글·이웃 등 자식 데이터 정리.
+
+조금 더 큰 것(스키마 변경 필요):
+- 대댓글(답글) — comments 에 `parent_id` 컬럼 추가해서 답글 트리.
+- 카테고리 직접 관리 — 사용자가 카테고리 이름변경/순서변경/삭제하는 화면 (categories CRUD).
+- 스크랩/북마크 — 남의 글 저장 (새 테이블 1개).
+
+### 완료된 항목 (확인됨)
+
+- ✅ DB SQL 파일 레포 추가: `blog_schema.sql`(구조, 10개 테이블 CREATE) + `blog_sample_data.sql`(데이터 INSERT).
+  mysqldump 로 추출. 실행 순서 schema → sample_data. (FK 체크 비활성 헤더 포함되어 삽입 순서 안전)
+- ✅ 내 글(manage.php) → 내 블로그(blog.php) 통합: 본인 보기에 상태탭(전체/발행/임시저장)+카드별 수정/삭제.
+  상단 네비 "내 글" 제거, manage.php 는 blog.php 로 리다이렉트. "블로그 찾기"도 네비에서 제거(이웃 안의 탭).
+- ✅ 댓글 수정 / 조회수 중복방지 / 비밀번호 변경 (위 아이디어 목록 참고).
+- ✅ 블로그 찾기 탭 세분화: 이웃 탭과 통합(neighbors.php 탭형) + 찾기 탭에 검색·정렬 추가.
+- ✅ 본문 이미지(갤러리) 표시 수정: view.php 갤러리가 잘리지 않고 최대 400px 로 표시(style.css `.post__gallery`).
+- ✅ 글 삭제 시 uploads 파일 정리: delete.php 가 썸네일 + post_images 파일 모두 `@unlink` 함.
+- ✅ 글 쓸 때 본문 이미지 여러 장 첨부: write.php `images[]` multiple (파일창에서 한 번에 다중 선택해야 함).
+- ✅ 글 수정 시 본문 이미지 편집: modify.php 에서 기존 이미지 개별 제거(체크박스) + 새 이미지 추가 가능.
+- ✅ 이미지 저장 방식 확인: 사진 바이너리는 DB에 안 넣고 `uploads/` 폴더에 저장,
+  DB(thumbnail_original/stored, post_images.original/stored)에는 파일명만 기록.
 
 ## 샘플 계정 (테스트용, 비밀번호는 직접 가입해서 만들어야 함 — 샘플은 해시 더미값)
 

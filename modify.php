@@ -52,6 +52,13 @@ $tagNames = array_column($stmt->get_result()->fetch_all(MYSQLI_ASSOC), 'name');
 $stmt->close();
 $tagInput = $tagNames ? '#' . implode(' #', $tagNames) : '';
 
+// 기존 본문 이미지 (수정 폼에서 개별 제거 / 추가)
+$stmt = $conn->prepare("SELECT id, stored, original FROM post_images WHERE post_id = ? ORDER BY sort_order, id");
+$stmt->bind_param("i", $postId);
+$stmt->execute();
+$postImages = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+
 // ============================================================
 // POST 처리 — 수정 저장
 // ============================================================
@@ -154,6 +161,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->close();
         }
 
+        // 본문 이미지 — 체크된 기존 이미지 제거 (파일 삭제 후 row 삭제)
+        if (!empty($_POST['remove_images']) && is_array($_POST['remove_images'])) {
+            foreach ($_POST['remove_images'] as $imgId) {
+                $imgId = (int)$imgId;
+                $stmt = $conn->prepare("SELECT stored FROM post_images WHERE id = ? AND post_id = ?");
+                $stmt->bind_param("ii", $imgId, $postId);
+                $stmt->execute();
+                $row = $stmt->get_result()->fetch_assoc();
+                $stmt->close();
+                if ($row) {
+                    @unlink($uploadDir . '/' . $row['stored']);
+                    $stmt = $conn->prepare("DELETE FROM post_images WHERE id = ? AND post_id = ?");
+                    $stmt->bind_param("ii", $imgId, $postId);
+                    $stmt->execute();
+                    $stmt->close();
+                }
+            }
+        }
+
+        // 본문 이미지 — 새로 올린 이미지 추가 (write.php 업로드 루프와 동일)
+        if (!empty($_FILES['images']['name'][0])) {
+            $imgAllowed = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+            if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
+            // 기존 마지막 정렬값 다음부터 이어붙임
+            $stmt = $conn->prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS nextord FROM post_images WHERE post_id = ?");
+            $stmt->bind_param("i", $postId);
+            $stmt->execute();
+            $order = (int)$stmt->get_result()->fetch_assoc()['nextord'];
+            $stmt->close();
+            for ($i = 0; $i < count($_FILES['images']['name']); $i++) {
+                if ($_FILES['images']['error'][$i] !== UPLOAD_ERR_OK) continue;
+                $ext = strtolower(pathinfo($_FILES['images']['name'][$i], PATHINFO_EXTENSION));
+                if (!in_array($ext, $imgAllowed, true)) continue;
+                $stored = uniqid('img_', true) . '.' . $ext;
+                if (move_uploaded_file($_FILES['images']['tmp_name'][$i], $uploadDir . '/' . $stored)) {
+                    $orig = basename($_FILES['images']['name'][$i]);
+                    $stmt = $conn->prepare("INSERT INTO post_images (post_id, original, stored, sort_order) VALUES (?,?,?,?)");
+                    $stmt->bind_param("issi", $postId, $orig, $stored, $order);
+                    $stmt->execute(); $stmt->close();
+                    $order++;
+                }
+            }
+        }
+
         header('Location: view.php?id=' . $postId);
         exit;
     }
@@ -218,6 +269,25 @@ require_once __DIR__ . '/header.php';
         <span>현재 썸네일(<?= htmlspecialchars($post['thumbnail_original']) ?>) 제거</span>
       </label>
     <?php endif; ?>
+
+    <?php if ($postImages): ?>
+      <div class="wf-field">
+        <span>현재 본문 이미지 (체크하면 제거)</span>
+        <div class="wf-imgedit">
+          <?php foreach ($postImages as $im): ?>
+            <label class="wf-imgedit__item">
+              <img src="uploads/<?= htmlspecialchars($im['stored']) ?>" alt="">
+              <span><input type="checkbox" name="remove_images[]" value="<?= (int)$im['id'] ?>"> 제거</span>
+            </label>
+          <?php endforeach; ?>
+        </div>
+      </div>
+    <?php endif; ?>
+
+    <label class="wf-field">
+      <span>본문 이미지 추가 (여러 장 선택 가능)</span>
+      <input type="file" name="images[]" accept="image/*" multiple>
+    </label>
 
     <div class="wf-actions">
       <a class="btn-ghost-dark" href="view.php?id=<?= (int)$postId ?>">취소</a>

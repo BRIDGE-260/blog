@@ -55,8 +55,6 @@ if (isset($_SESSION['user_id'])) {
     <?php if ($loginNickname): ?>
       <a href="write.php">글쓰기</a>
       <a href="blog.php?id=<?= (int)$_SESSION['user_id'] ?>">내 블로그</a>
-      <a href="manage.php">내 글</a>
-      <a href="bloggers.php">블로그 찾기</a>
       <a href="neighbors.php">이웃</a>
       <a href="notifications.php">소식</a>
       <a class="topbar__me" href="profile.php">

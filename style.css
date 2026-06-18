@@ -104,6 +104,7 @@ body {
 /* ── 공용 입력칸 (밑줄 스타일) ────────── */
 .search input,
 .write-form input[type="text"],
+.write-form input[type="password"],
 .write-form select {
   border: none;
   outline: none;
@@ -116,6 +117,7 @@ body {
 }
 .search input:focus,
 .write-form input[type="text"]:focus,
+.write-form input[type="password"]:focus,
 .write-form select:focus { border-bottom-color: var(--accent); }
 ::placeholder { color: #c2c6cb; }
 
@@ -365,6 +367,20 @@ body {
   color: var(--text-sub);
 }
 
+/* 본인 블로그 카드: 카드 + 수정/삭제 액션 묶음 */
+.card-wrap { display: flex; flex-direction: column; }
+.card-wrap .card { flex: 1; }
+.card-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+.card-actions a {
+  font-size: 13px;
+  color: var(--text-sub);
+  text-decoration: none;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.card-actions a:hover { border-color: var(--accent); color: var(--accent); }
+
 /* ── 빈 상태 / 페이징 ─────────────────── */
 .empty { text-align: center; color: var(--text-sub); padding: 60px 0; }
 .pager {
@@ -467,8 +483,8 @@ body {
   overflow: hidden;
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.08);
 }
-.post__thumb { width: 100%; max-height: 360px; overflow: hidden; margin-bottom: 28px; }
-.post__thumb img { width: 100%; height: 100%; object-fit: cover; }
+.post__thumb { width: 100%; margin-bottom: 28px; text-align: center; }
+.post__thumb img { max-width: 100%; max-height: 360px; width: auto; height: auto; border-radius: 8px; display: inline-block; }
 .post__cat,
 .post__title,
 .post__meta,
@@ -512,8 +528,16 @@ body {
   line-height: 1.85;
   color: #33373a;
 }
-.post__gallery { margin-top: 22px; max-width: 680px; display: flex; flex-direction: column; gap: 12px; }
-.post__gallery img { width: 100%; border-radius: 8px; display: block; }
+.post__gallery { margin-top: 22px; max-width: 680px; display: flex; flex-wrap: wrap; gap: 12px; }
+.post__gallery img {
+  width: 200px;
+  height: 200px;
+  object-fit: contain;
+  background: #f4f4f4;
+  border-radius: 8px;
+  display: block;
+  border: 1px solid var(--line);
+}
 .post__tags { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 8px; }
 .tag { font-size: 13px; color: var(--text-sub); text-decoration: none; }
 .tag:hover { color: var(--accent); }
@@ -564,11 +588,25 @@ body {
 .comment__name { font-size: 14px; font-weight: 600; }
 .comment__date { font-size: 12px; color: var(--text-sub); }
 .comment__body { font-size: 14px; line-height: 1.6; }
-.comment__del { position: absolute; top: 14px; right: 0; }
+.comment__actions { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
 .comment__del button {
-  border: none; background: none; cursor: pointer;
+  border: none; background: none; cursor: pointer; padding: 0;
   font-size: 12px; color: var(--text-sub); font-family: inherit;
 }
+.comment__edit summary {
+  list-style: none; cursor: pointer;
+  font-size: 12px; color: var(--text-sub);
+}
+.comment__edit summary::-webkit-details-marker { display: none; }
+.comment__edit[open] { flex-basis: 100%; }
+.comment__edit form { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+.comment__edit textarea {
+  width: 100%; border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 12px; font-family: inherit; font-size: 14px; line-height: 1.6;
+  resize: vertical; outline: none;
+}
+.comment__edit textarea:focus { border-color: var(--accent); }
+.comment__edit .btn-primary { padding: 6px 16px; font-size: 13px; }
 .comment-form { margin-top: 20px; display: flex; flex-direction: column; gap: 12px; align-items: flex-end; }
 .comment-form textarea {
   width: 100%;
@@ -589,6 +627,12 @@ body {
 /* 수정 폼 체크박스(썸네일 제거) */
 .wf-checkfield { display: flex; align-items: center; gap: 8px; }
 .wf-checkfield span { font-size: 13px; color: var(--text-sub); }
+
+/* 수정 폼 본문 이미지 편집(개별 제거) */
+.wf-imgedit { display: flex; flex-wrap: wrap; gap: 12px; }
+.wf-imgedit__item { display: flex; flex-direction: column; gap: 6px; width: 120px; }
+.wf-imgedit__item img { width: 120px; height: 120px; object-fit: cover; border-radius: 8px; display: block; }
+.wf-imgedit__item span { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-sub); text-transform: none; letter-spacing: 0; }
 
 /* ── 삭제 확인 화면 ───────────────────── */
 .confirm {
@@ -678,6 +722,38 @@ body {
 @media (max-width: 720px) {
   .blog-layout { flex-direction: column; }
   .blog-side { width: 100%; }
+}
+
+/* ── 이웃/블로그 찾기 탭 ───────────────── */
+.nbr-tabs { display: flex; gap: 6px; margin-bottom: 24px; border-bottom: 1px solid var(--line); }
+.nbr-tabs a {
+  padding: 10px 18px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-sub);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.nbr-tabs a.on { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* 블로그 찾기 검색·정렬 바 */
+.nbr-search { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 22px; }
+.nbr-search input[type="text"] {
+  flex: 1;
+  min-width: 200px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 14px;
+}
+.nbr-search input[type="text"]:focus { border-color: var(--accent); outline: none; }
+.nbr-search select {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  background: var(--surface);
 }
 
 /* ── 이웃 목록 ────────────────────────── */

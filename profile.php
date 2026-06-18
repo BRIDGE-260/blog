@@ -155,6 +155,7 @@ require_once __DIR__ . '/header.php';
     </label>
 
     <div class="wf-actions">
+      <a class="btn-ghost-dark" href="password.php">비밀번호 변경</a>
       <button type="submit" class="btn-primary">저장</button>
     </div>
   </form>

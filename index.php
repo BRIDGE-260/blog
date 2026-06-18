@@ -162,16 +162,6 @@ if (!$ajax) {
   </a>
 <?php endif; ?>
 
-<!-- 카테고리(주제) 탭 -->
-<?php if ($isHome): ?>
-<nav class="cat-tabs">
-  <a class="<?= $cat === '' ? 'on' : '' ?>" href="index.php">전체</a>
-  <?php foreach ($FIXED_CATEGORIES as $cn): ?>
-    <a class="<?= $cat === $cn ? 'on' : '' ?>" href="index.php?cat=<?= urlencode($cn) ?>"><?= htmlspecialchars($cn) ?></a>
-  <?php endforeach; ?>
-</nav>
-<?php endif; ?>
-
 <!-- ① 이웃 새 글 -->
 <?php if ($isHome && $neighborPosts): ?>
   <section class="nb">
@@ -224,6 +214,16 @@ if (!$ajax) {
       <?php endforeach; ?>
     </div>
   </section>
+<?php endif; ?>
+
+<!-- 카테고리(주제) 탭 — 둘러보기 바로 위 -->
+<?php if ($isHome): ?>
+<nav class="cat-tabs">
+  <a class="<?= $cat === '' ? 'on' : '' ?>" href="index.php">전체</a>
+  <?php foreach ($FIXED_CATEGORIES as $cn): ?>
+    <a class="<?= $cat === $cn ? 'on' : '' ?>" href="index.php?cat=<?= urlencode($cn) ?>"><?= htmlspecialchars($cn) ?></a>
+  <?php endforeach; ?>
+</nav>
 <?php endif; ?>
 
 <!-- ③ 메인 피드 (AJAX로 교체되는 영역) -->
