@@ -40,7 +40,7 @@ $popularPosts = $conn->query(
      JOIN users u ON u.id = p.user_id
      WHERE p.status = 'published' AND p.visibility = 'all'
      ORDER BY like_count DESC, p.view_count DESC, p.created_at DESC
-     LIMIT 5"
+     LIMIT 4"
 )->fetch_all(MYSQLI_ASSOC);
 
 // ── ② 인기 태그 (공개글에 많이 쓰인 태그 Top 10) ──

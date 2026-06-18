@@ -70,12 +70,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canView && $isLogin) {
         $stmt->close();
     }
 
-    // 댓글 작성
+    // 스크랩 토글: 이미 했으면 취소, 아니면 추가
+    elseif ($action === 'scrap') {
+        $stmt = $conn->prepare("SELECT id FROM scraps WHERE post_id = ? AND user_id = ?");
+        $stmt->bind_param("ii", $postId, $viewerId);
+        $stmt->execute();
+        $has = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if ($has) {
+            $stmt = $conn->prepare("DELETE FROM scraps WHERE post_id = ? AND user_id = ?");
+        } else {
+            $stmt = $conn->prepare("INSERT INTO scraps (post_id, user_id) VALUES (?, ?)");
+        }
+        $stmt->bind_param("ii", $postId, $viewerId);
+        $stmt->execute();
+        $stmt->close();
+    }
+
+    // 댓글 작성 (parent_id 있으면 답글)
     elseif ($action === 'comment') {
-        $content = trim($_POST['content'] ?? '');
+        $content  = trim($_POST['content'] ?? '');
+        $parentId = (int)($_POST['parent_id'] ?? 0);
         if ($content !== '') {
-            $stmt = $conn->prepare("INSERT INTO comments (post_id, user_id, content) VALUES (?, ?, ?)");
-            $stmt->bind_param("iis", $postId, $viewerId, $content);
+            // 답글은 1단계만 — 부모가 이 글의 "최상위" 댓글일 때만 허용
+            $parentParam = null;
+            if ($parentId > 0) {
+                $stmt = $conn->prepare("SELECT id FROM comments WHERE id = ? AND post_id = ? AND parent_id IS NULL");
+                $stmt->bind_param("ii", $parentId, $postId);
+                $stmt->execute();
+                if ($stmt->get_result()->fetch_assoc()) $parentParam = $parentId;
+                $stmt->close();
+            }
+            $stmt = $conn->prepare("INSERT INTO comments (post_id, parent_id, user_id, content) VALUES (?, ?, ?, ?)");
+            $stmt->bind_param("iiis", $postId, $parentParam, $viewerId, $content);
             $stmt->execute();
             $stmt->close();
         }
@@ -120,7 +148,8 @@ if ($canView) {
 }
 
 // 상세 데이터 (태그 / 공감 / 댓글 / 이전·다음) — 볼 수 있을 때만 조회
-$tags = []; $images = []; $likeCount = 0; $likedByMe = false; $comments = []; $prev = $next = null;
+$tags = []; $images = []; $likeCount = 0; $likedByMe = false; $likers = []; $scrapped = false;
+$comments = []; $parents = []; $children = []; $prev = $next = null;
 if ($canView) {
     // 태그 (id 포함 — 클릭 시 메인 태그 필터로 이동)
     $stmt = $conn->prepare(
@@ -151,9 +180,28 @@ if ($canView) {
     $likedByMe = (bool)$stmt->get_result()->fetch_assoc();
     $stmt->close();
 
-    // 댓글 목록
+    // 공감 누른 사람 목록 (최신순)
     $stmt = $conn->prepare(
-        "SELECT cm.id, cm.content, cm.created_at, cm.user_id, u.nickname
+        "SELECT u.id, u.nickname FROM likes l JOIN users u ON u.id = l.user_id
+         WHERE l.post_id = ? ORDER BY l.created_at DESC"
+    );
+    $stmt->bind_param("i", $postId);
+    $stmt->execute();
+    $likers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    // 내가 이 글을 스크랩했는지
+    if ($isLogin) {
+        $stmt = $conn->prepare("SELECT id FROM scraps WHERE post_id = ? AND user_id = ?");
+        $stmt->bind_param("ii", $postId, $viewerId);
+        $stmt->execute();
+        $scrapped = (bool)$stmt->get_result()->fetch_assoc();
+        $stmt->close();
+    }
+
+    // 댓글 목록 (부모 댓글 + 답글) → parent_id 로 묶기
+    $stmt = $conn->prepare(
+        "SELECT cm.id, cm.parent_id, cm.content, cm.created_at, cm.user_id, u.nickname
          FROM comments cm JOIN users u ON u.id = cm.user_id
          WHERE cm.post_id = ? ORDER BY cm.created_at ASC"
     );
@@ -161,6 +209,11 @@ if ($canView) {
     $stmt->execute();
     $comments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
+
+    foreach ($comments as $c) {
+        if ($c['parent_id'] === null) $parents[] = $c;
+        else $children[$c['parent_id']][] = $c;
+    }
 
     // 같은 블로그(작성자)의 이전/다음 발행글
     $stmt = $conn->prepare(
@@ -236,14 +289,33 @@ require_once __DIR__ . '/header.php';
       </div>
     <?php endif; ?>
 
-    <!-- 공감 -->
-    <?php if ($isLogin): ?>
-      <form class="like" method="post" action="view.php?id=<?= (int)$post['id'] ?>">
-        <input type="hidden" name="action" value="like">
-        <button type="submit" class="like-btn <?= $likedByMe ? 'on' : '' ?>">♥ 공감 <?= $likeCount ?></button>
-      </form>
-    <?php else: ?>
-      <div class="like"><a class="like-btn" href="auth.php">♥ 공감 <?= $likeCount ?></a></div>
+    <!-- 공감 / 스크랩 -->
+    <div class="post__react">
+      <?php if ($isLogin): ?>
+        <form method="post" action="view.php?id=<?= (int)$post['id'] ?>">
+          <input type="hidden" name="action" value="like">
+          <button type="submit" class="like-btn <?= $likedByMe ? 'on' : '' ?>">♥ 공감 <?= $likeCount ?></button>
+        </form>
+        <form method="post" action="view.php?id=<?= (int)$post['id'] ?>">
+          <input type="hidden" name="action" value="scrap">
+          <button type="submit" class="like-btn <?= $scrapped ? 'on' : '' ?>"><?= $scrapped ? '★ 스크랩됨' : '☆ 스크랩' ?></button>
+        </form>
+      <?php else: ?>
+        <a class="like-btn" href="auth.php">♥ 공감 <?= $likeCount ?></a>
+        <a class="like-btn" href="auth.php">☆ 스크랩</a>
+      <?php endif; ?>
+      <button type="button" class="like-btn" id="copyLink">🔗 링크 복사</button>
+    </div>
+
+    <?php if ($likers): ?>
+      <details class="likers">
+        <summary>공감한 사람 <?= count($likers) ?>명</summary>
+        <div class="likers__list">
+          <?php foreach ($likers as $lk): ?>
+            <a href="blog.php?id=<?= (int)$lk['id'] ?>"><?= htmlspecialchars($lk['nickname']) ?>님</a>
+          <?php endforeach; ?>
+        </div>
+      </details>
     <?php endif; ?>
   </article>
 
@@ -262,35 +334,65 @@ require_once __DIR__ . '/header.php';
   </nav>
 
   <!-- 댓글 -->
-  <section class="comments">
-    <h2>댓글 <?= count($comments) ?></h2>
-
-    <?php foreach ($comments as $cm): ?>
-      <div class="comment">
+  <?php
+  /** 댓글/답글 한 개 출력. $allowReply=true 면 답글 폼 노출(최상위 댓글에만). */
+  function renderComment($cm, $postId, $viewerId, $isLogin, $isReply = false) {
+      $mine = $cm['user_id'] == $viewerId;
+      $canReply = !$isReply && $isLogin;
+      ?>
+      <div class="comment <?= $isReply ? 'comment--reply' : '' ?>">
         <div class="comment__head">
           <span class="comment__name"><?= htmlspecialchars($cm['nickname']) ?>님</span>
           <span class="comment__date"><?= date('Y.m.d H:i', strtotime($cm['created_at'])) ?></span>
         </div>
         <p class="comment__body"><?= nl2br(htmlspecialchars($cm['content'])) ?></p>
-        <?php if ($cm['user_id'] == $viewerId): ?>
+        <?php if ($canReply || $mine): ?>
           <div class="comment__actions">
-            <details class="comment__edit">
-              <summary>수정</summary>
-              <form method="post" action="view.php?id=<?= (int)$post['id'] ?>">
-                <input type="hidden" name="action" value="comment_edit">
+            <?php if ($canReply): ?>
+              <details class="comment__reply">
+                <summary>답글</summary>
+                <form method="post" action="view.php?id=<?= (int)$postId ?>">
+                  <input type="hidden" name="action" value="comment">
+                  <input type="hidden" name="parent_id" value="<?= (int)$cm['id'] ?>">
+                  <textarea name="content" rows="2" placeholder="답글을 남겨보세요" required></textarea>
+                  <button type="submit" class="btn-primary">등록</button>
+                </form>
+              </details>
+            <?php endif; ?>
+            <?php if ($mine): ?>
+              <details class="comment__edit">
+                <summary>수정</summary>
+                <form method="post" action="view.php?id=<?= (int)$postId ?>">
+                  <input type="hidden" name="action" value="comment_edit">
+                  <input type="hidden" name="comment_id" value="<?= (int)$cm['id'] ?>">
+                  <textarea name="content" rows="2" required><?= htmlspecialchars($cm['content']) ?></textarea>
+                  <button type="submit" class="btn-primary">저장</button>
+                </form>
+              </details>
+              <form method="post" action="view.php?id=<?= (int)$postId ?>" class="comment__del">
+                <input type="hidden" name="action" value="comment_delete">
                 <input type="hidden" name="comment_id" value="<?= (int)$cm['id'] ?>">
-                <textarea name="content" rows="2" required><?= htmlspecialchars($cm['content']) ?></textarea>
-                <button type="submit" class="btn-primary">저장</button>
+                <button type="submit">삭제</button>
               </form>
-            </details>
-            <form method="post" action="view.php?id=<?= (int)$post['id'] ?>" class="comment__del">
-              <input type="hidden" name="action" value="comment_delete">
-              <input type="hidden" name="comment_id" value="<?= (int)$cm['id'] ?>">
-              <button type="submit">삭제</button>
-            </form>
+            <?php endif; ?>
           </div>
         <?php endif; ?>
       </div>
+      <?php
+  }
+  ?>
+  <section class="comments">
+    <h2>댓글 <?= count($comments) ?></h2>
+
+    <?php foreach ($parents as $cm): ?>
+      <?php renderComment($cm, $post['id'], $viewerId, $isLogin, false); ?>
+      <?php if (!empty($children[$cm['id']])): ?>
+        <div class="comment-replies">
+          <?php foreach ($children[$cm['id']] as $rep): ?>
+            <?php renderComment($rep, $post['id'], $viewerId, $isLogin, true); ?>
+          <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
     <?php endforeach; ?>
 
     <?php if ($isLogin): ?>
@@ -303,6 +405,30 @@ require_once __DIR__ . '/header.php';
       <p class="comment-guest">댓글을 쓰려면 <a href="auth.php">로그인</a>하세요.</p>
     <?php endif; ?>
   </section>
+
+  <!-- 이미지 라이트박스(클릭 확대) -->
+  <div id="lightbox" class="lightbox"><img src="" alt=""></div>
+  <script>
+  (function () {
+    // 본문/썸네일 이미지 클릭 시 확대
+    var lb = document.getElementById('lightbox');
+    var lbImg = lb.querySelector('img');
+    document.querySelectorAll('.post__gallery img, .post__thumb img').forEach(function (el) {
+      el.style.cursor = 'zoom-in';
+      el.addEventListener('click', function () { lbImg.src = el.src; lb.classList.add('on'); });
+    });
+    lb.addEventListener('click', function () { lb.classList.remove('on'); });
+
+    // 글 링크 복사
+    var copy = document.getElementById('copyLink');
+    if (copy) copy.addEventListener('click', function () {
+      navigator.clipboard.writeText(location.href).then(function () {
+        copy.textContent = '✓ 복사됨';
+        setTimeout(function () { copy.textContent = '🔗 링크 복사'; }, 1500);
+      });
+    });
+  })();
+  </script>
 
 <?php endif; ?>
 

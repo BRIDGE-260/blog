@@ -214,12 +214,14 @@ require_once __DIR__ . '/header.php';
 
       <div class="profile__visit">
         오늘 <?= $todayVisit ?> · 전체 <?= $totalVisit ?>
-        <?php if ($isOwner): ?><br><a href="stats.php">통계 보기</a> · <a href="liked.php">좋아요한 글</a><?php endif; ?>
+        <?php if ($isOwner): ?><br><a href="stats.php">통계 보기</a> · <a href="liked.php">좋아요한 글</a> · <a href="scraps.php">스크랩</a><?php endif; ?>
       </div>
+
+      <a class="profile__gb" href="guestbook.php?id=<?= $ownerId ?>">📖 방명록</a>
     </div>
 
     <nav class="cat-list">
-      <div class="cat-list__head">카테고리</div>
+      <div class="cat-list__head">카테고리<?php if ($isOwner): ?><a class="cat-list__manage" href="categories_manage.php">관리</a><?php endif; ?></div>
       <a class="<?= $cat === 0 ? 'on' : '' ?>" href="blog.php?id=<?= $ownerId ?>">전체</a>
       <?php foreach ($categories as $c): ?>
         <a class="<?= $cat === (int)$c['id'] ? 'on' : '' ?>"

@@ -17,7 +17,7 @@ $error  = '';
 
 // 현재 값 불러오기 (이미지 교체/유지 판단에도 사용)
 $stmt = $conn->prepare(
-    "SELECT nickname, blog_title, intro, gender, profile_image_original, profile_image_stored
+    "SELECT name, nickname, blog_title, intro, gender, profile_image_original, profile_image_stored
      FROM users WHERE id = ?"
 );
 $stmt->bind_param("i", $userId);
@@ -27,6 +27,7 @@ $stmt->close();
 
 // ── POST: 저장 ─────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $nickname  = trim($_POST['nickname'] ?? '');
     $blogTitle = trim($_POST['blog_title'] ?? '');
     $intro     = trim($_POST['intro'] ?? '');
     $gender    = $_POST['gender'] ?? '';
@@ -34,6 +35,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $blogTitleParam = ($blogTitle !== '') ? $blogTitle : null;
     $introParam     = ($intro !== '') ? $intro : null;
     $genderParam    = in_array($gender, ['남성', '여성'], true) ? $gender : null;
+
+    // 닉네임 검증: 비어있지 않고, 남이 쓰고 있지 않아야 함(UNIQUE)
+    if ($nickname === '') {
+        $error = '닉네임을 입력해주세요.';
+    } else {
+        $stmt = $conn->prepare("SELECT id FROM users WHERE nickname = ? AND id <> ?");
+        $stmt->bind_param("si", $nickname, $userId);
+        $stmt->execute();
+        $dup = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        if ($dup) $error = '이미 사용 중인 닉네임이에요.';
+    }
 
     // 이미지 최종값 = 기존 값에서 시작
     $imgOriginal = $user['profile_image_original'];
@@ -68,16 +81,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($error === '') {
         $stmt = $conn->prepare(
             "UPDATE users
-               SET blog_title = ?, intro = ?, gender = ?,
+               SET nickname = ?, blog_title = ?, intro = ?, gender = ?,
                    profile_image_original = ?, profile_image_stored = ?
              WHERE id = ?"
         );
         $stmt->bind_param(
-            "sssssi",
-            $blogTitleParam, $introParam, $genderParam, $imgOriginal, $imgStored, $userId
+            "ssssssi",
+            $nickname, $blogTitleParam, $introParam, $genderParam, $imgOriginal, $imgStored, $userId
         );
         $stmt->execute();
         $stmt->close();
+        $_SESSION['nickname'] = $nickname;   // 상단바 등 표시용 세션도 갱신
         $saved = true;
 
         // 화면에 갱신된 값 다시 불러오기
@@ -130,8 +144,14 @@ require_once __DIR__ . '/header.php';
     </div>
 
     <label class="wf-field">
-      <span>닉네임 (변경 불가)</span>
-      <input type="text" value="<?= htmlspecialchars($user['nickname']) ?>" disabled>
+      <span>이름 (변경 불가)</span>
+      <input type="text" value="<?= htmlspecialchars($user['name']) ?>" disabled>
+    </label>
+
+    <label class="wf-field">
+      <span>닉네임</span>
+      <input type="text" name="nickname" value="<?= htmlspecialchars($user['nickname']) ?>"
+             placeholder="블로그에 표시될 이름" required>
     </label>
 
     <label class="wf-field">
@@ -159,6 +179,8 @@ require_once __DIR__ . '/header.php';
       <button type="submit" class="btn-primary">저장</button>
     </div>
   </form>
+
+  <p class="setting__danger"><a href="withdraw.php">회원 탈퇴</a></p>
 </section>
 
 <?php require_once __DIR__ . '/footer.php'; ?>

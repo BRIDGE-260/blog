@@ -44,15 +44,39 @@ DROP TABLE IF EXISTS `comments`;
 CREATE TABLE `comments` (
   `id` int(11) NOT NULL AUTO_INCREMENT COMMENT '댓글 고유 번호',
   `post_id` int(11) NOT NULL COMMENT '댓글이 달린 글',
+  `parent_id` int(11) DEFAULT NULL COMMENT '부모 댓글 id(답글이면 그 댓글, 일반댓글이면 NULL)',
   `user_id` int(11) NOT NULL COMMENT '댓글 작성자',
   `content` text NOT NULL COMMENT '댓글 내용',
   `created_at` datetime NOT NULL DEFAULT current_timestamp() COMMENT '작성 일시',
   PRIMARY KEY (`id`),
   KEY `idx_comments_post` (`post_id`),
   KEY `idx_comments_user` (`user_id`),
+  KEY `idx_comments_parent` (`parent_id`),
+  CONSTRAINT `fk_comments_parent` FOREIGN KEY (`parent_id`) REFERENCES `comments` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_comments_post` FOREIGN KEY (`post_id`) REFERENCES `posts` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_comments_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `guestbook`
+--
+
+DROP TABLE IF EXISTS `guestbook`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `guestbook` (
+  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT '방명록 글 고유 번호',
+  `owner_id` int(11) NOT NULL COMMENT '방명록 주인(블로그 주인)',
+  `user_id` int(11) NOT NULL COMMENT '방명록을 남긴 회원',
+  `content` text NOT NULL COMMENT '방명록 내용',
+  `created_at` datetime NOT NULL DEFAULT current_timestamp() COMMENT '작성 일시',
+  PRIMARY KEY (`id`),
+  KEY `idx_guestbook_owner` (`owner_id`),
+  KEY `idx_guestbook_user` (`user_id`),
+  CONSTRAINT `fk_guestbook_owner` FOREIGN KEY (`owner_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_guestbook_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -72,7 +96,7 @@ CREATE TABLE `likes` (
   KEY `idx_likes_user` (`user_id`),
   CONSTRAINT `fk_likes_post` FOREIGN KEY (`post_id`) REFERENCES `posts` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_likes_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=14 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=16 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -157,6 +181,26 @@ CREATE TABLE `posts` (
   CONSTRAINT `fk_posts_category` FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_posts_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=19 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `scraps`
+--
+
+DROP TABLE IF EXISTS `scraps`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `scraps` (
+  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT '스크랩 고유 번호',
+  `user_id` int(11) NOT NULL COMMENT '스크랩한 회원',
+  `post_id` int(11) NOT NULL COMMENT '스크랩된 글',
+  `created_at` datetime NOT NULL DEFAULT current_timestamp() COMMENT '스크랩 일시',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_scraps_user_post` (`user_id`,`post_id`),
+  KEY `idx_scraps_post` (`post_id`),
+  CONSTRAINT `fk_scraps_post` FOREIGN KEY (`post_id`) REFERENCES `posts` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_scraps_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
