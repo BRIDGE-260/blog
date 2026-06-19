@@ -293,8 +293,8 @@ require_once __DIR__ . '/../app/header.php';
   </form>
 </section>
 
-<script src="../assets/js/taginput.js?v=20260619b"></script>
-<script src="../assets/js/imageinsert.js?v=20260619b"></script>
+<script src="../assets/js/taginput.js?v=20260619c"></script>
+<script src="../assets/js/imageinsert.js?v=20260619c"></script>
 
 <?php require_once __DIR__ . '/../app/footer.php'; ?>
 

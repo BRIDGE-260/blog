@@ -1,3 +1,5 @@
 db.php
 uploads/*
 !uploads/sample_*.png
+app/db.php
+!app/db.example.php

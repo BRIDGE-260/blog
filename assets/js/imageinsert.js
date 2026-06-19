@@ -179,18 +179,37 @@
   });
 
   var selImg  = null;
-  var resizeHandle = document.createElement('span');
-  resizeHandle.className = 'img-resize-handle';
-  resizeHandle.title = '드래그해서 이미지 크기 조절';
-  resizeHandle.contentEditable = 'false';
+  var resizeBox = document.createElement('span');
+  resizeBox.className = 'img-resize-box';
+  resizeBox.contentEditable = 'false';
+  ['nw', 'ne', 'sw', 'se'].forEach(function (pos) {
+    var handle = document.createElement('span');
+    handle.className = 'img-resize-handle ' + pos;
+    handle.setAttribute('data-pos', pos);
+    handle.title = '드래그해서 이미지 크기 조절';
+    handle.contentEditable = 'false';
+    resizeBox.appendChild(handle);
+  });
+
+  function positionResizeBox() {
+    if (!selImg || !resizeBox.parentNode) return;
+    var imgRect = selImg.getBoundingClientRect();
+    var editorRect = editor.getBoundingClientRect();
+    resizeBox.style.left = (imgRect.left - editorRect.left + editor.scrollLeft) + 'px';
+    resizeBox.style.top = (imgRect.top - editorRect.top + editor.scrollTop) + 'px';
+    resizeBox.style.width = imgRect.width + 'px';
+    resizeBox.style.height = imgRect.height + 'px';
+  }
 
   function selectImg(img) {
     selImg = img;
     editor.querySelectorAll('.editor-img').forEach(function (i) { i.classList.remove('sel'); });
-    resizeHandle.remove();
+    resizeBox.remove();
+    editor.classList.toggle('has-img-selection', !!img);
     if (img) {
       img.classList.add('sel');
-      img.insertAdjacentElement('afterend', resizeHandle);
+      editor.appendChild(resizeBox);
+      positionResizeBox();
     }
   }
   editor.addEventListener('dragstart', function (e) {
@@ -217,19 +236,24 @@
     }
   });
 
-  resizeHandle.addEventListener('mousedown', function (e) {
+  resizeBox.addEventListener('mousedown', function (e) {
     if (!selImg) return;
+    var handle = e.target.closest('.img-resize-handle');
+    if (!handle) return;
     e.preventDefault();
     e.stopPropagation();
     selImg.draggable = false;
     var editorWidth = editor.clientWidth || 1;
     var startX = e.clientX;
     var startWidth = selImg.getBoundingClientRect().width;
+    var pos = handle.getAttribute('data-pos') || 'se';
 
     function onMove(ev) {
-      var px = Math.max(80, Math.min(editorWidth, startWidth + ev.clientX - startX));
+      var direction = pos.indexOf('w') >= 0 ? -1 : 1;
+      var px = Math.max(80, Math.min(editorWidth, startWidth + (ev.clientX - startX) * direction));
       var percent = Math.max(15, Math.min(100, Math.round(px / editorWidth * 100)));
       selImg.style.width = percent + '%';
+      positionResizeBox();
     }
 
     function onUp() {
@@ -241,6 +265,8 @@
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   });
+  editor.addEventListener('scroll', positionResizeBox);
+  window.addEventListener('resize', positionResizeBox);
 
   // ── 직렬화: 본문 → 텍스트 + [[img:token]] ──
   function serialize(node) {

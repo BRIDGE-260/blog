@@ -445,7 +445,8 @@ body {
 .wf-content:focus { border-color: var(--accent); }
 
 /* 위지윅 본문 편집기(contenteditable) */
-.wf-editor { min-height: 320px; overflow-y: auto; }
+.wf-editor { min-height: 320px; overflow-y: auto; position: relative; }
+.wf-editor.has-img-selection { caret-color: transparent; }
 .wf-editor:empty:before { content: attr(data-placeholder); color: #c2c6cb; }
 .wf-editor .editor-img {
   display: inline-block; vertical-align: middle; margin: 12px 8px;
@@ -455,17 +456,27 @@ body {
 }
 .wf-editor .editor-img:active { cursor: grabbing; }
 .wf-editor .editor-img.sel { outline: 3px solid var(--accent); outline-offset: 2px; }
+.img-resize-box {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+}
 .img-resize-handle {
-  display: inline-block;
+  position: absolute;
+  pointer-events: auto;
   width: 13px;
   height: 13px;
-  margin-left: -19px;
-  margin-bottom: 8px;
-  vertical-align: bottom;
   border: 2px solid #fff;
   border-radius: 50%;
   background: var(--accent);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+.img-resize-handle.nw { left: -8px; top: -8px; cursor: nwse-resize; }
+.img-resize-handle.ne { right: -8px; top: -8px; cursor: nesw-resize; }
+.img-resize-handle.sw { left: -8px; bottom: -8px; cursor: nesw-resize; }
+.img-resize-handle.se {
+  right: -8px;
+  bottom: -8px;
   cursor: nwse-resize;
 }
 .wf-row { display: flex; gap: 20px; flex-wrap: wrap; }
