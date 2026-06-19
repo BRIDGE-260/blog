@@ -159,13 +159,13 @@ $offset     = ($page - 1) * $perPage;
 $stmt = $conn->prepare(
     "SELECT p.id, p.title, p.content, p.view_count, p.created_at,
             COALESCE((SELECT pi.stored FROM post_images pi WHERE pi.post_id = p.id ORDER BY pi.sort_order, pi.id LIMIT 1), p.thumbnail_stored) AS thumbnail_stored,
-            p.status, p.visibility, c.name AS category_name,
+            p.status, p.visibility, p.is_pinned, c.name AS category_name,
             (SELECT COUNT(*) FROM likes l    WHERE l.post_id = p.id) AS like_count,
             (SELECT COUNT(*) FROM comments m WHERE m.post_id = p.id) AS comment_count
      FROM posts p
      LEFT JOIN categories c ON c.id = p.category_id
      WHERE $where
-     ORDER BY p.created_at DESC
+     ORDER BY p.is_pinned DESC, p.created_at DESC
      LIMIT ? OFFSET ?"
 );
 $listParams = [...$params, $perPage, $offset];
@@ -259,6 +259,7 @@ require_once __DIR__ . '/../app/header.php';
             </div>
             <div class="card__body">
               <span class="card__cat">
+                <?php if (!empty($p['is_pinned'])): ?><b class="card__pin">공지</b><?php endif; ?>
                 <?= $p['category_name'] ? htmlspecialchars($p['category_name']) : '미분류' ?>
                 <?php if ($isOwner && $p['status'] === 'draft'): ?> · 임시저장<?php endif; ?>
                 <?php if ($isOwner && $p['visibility'] !== 'all'): ?> · <?= $p['visibility'] === 'private' ? '비공개' : '이웃공개' ?><?php endif; ?>

@@ -1,7 +1,7 @@
 <?php
 /**
  * guestbook.php — 방명록 (블로그 자체에 남기는 글).
- *   누구나 열람, 작성은 로그인 필요.
+ *   누구나 열람, 작성은 로그인 필요. 단, 본인 방명록에는 작성하지 않음.
  *   삭제: 글쓴이 본인 또는 방명록 주인(블로그 주인)이 가능.
  */
 
@@ -33,7 +33,7 @@ $isOwner = $ownerId === (int)$viewerId;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isLogin) {
     $action = $_POST['action'] ?? '';
 
-    if ($action === 'write') {
+    if ($action === 'write' && !$isOwner) {
         $content = trim($_POST['content'] ?? '');
         if ($content !== '') {
             $stmt = $conn->prepare("INSERT INTO guestbook (owner_id, user_id, content) VALUES (?, ?, ?)");
@@ -77,12 +77,14 @@ require_once __DIR__ . '/../app/header.php';
     <a class="gb__back" href="blog.php?id=<?= (int)$ownerId ?>">← <?= htmlspecialchars($ownerName) ?></a>
   </div>
 
-  <?php if ($isLogin): ?>
+  <?php if ($isLogin && !$isOwner): ?>
     <form class="comment-form" method="post" action="guestbook.php?id=<?= (int)$ownerId ?>">
       <input type="hidden" name="action" value="write">
       <textarea name="content" rows="3" placeholder="방명록을 남겨보세요" required></textarea>
       <button type="submit" class="btn-primary">등록</button>
     </form>
+  <?php elseif ($isOwner): ?>
+    <p class="comment-guest">내 방명록에서는 다른 사람이 남긴 글을 확인하고 관리할 수 있어요.</p>
   <?php else: ?>
     <p class="comment-guest">방명록을 쓰려면 <a href="auth.php">로그인</a>하세요.</p>
   <?php endif; ?>

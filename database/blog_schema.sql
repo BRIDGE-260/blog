@@ -173,11 +173,13 @@ CREATE TABLE `posts` (
   `view_count` int(11) NOT NULL DEFAULT 0 COMMENT '조회수',
   `visibility` varchar(10) NOT NULL DEFAULT 'all' COMMENT '공개 설정 (all/neighbor/private)',
   `status` varchar(10) NOT NULL DEFAULT 'draft' COMMENT '글 상태 (draft 임시저장 / published 발행)',
+  `is_pinned` tinyint(1) NOT NULL DEFAULT 0 COMMENT '블로그 상단 고정 여부',
   `created_at` datetime NOT NULL DEFAULT current_timestamp() COMMENT '작성 일시',
   `updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp() COMMENT '수정 일시',
   PRIMARY KEY (`id`),
   KEY `idx_posts_user` (`user_id`),
   KEY `idx_posts_category` (`category_id`),
+  KEY `idx_posts_pinned` (`user_id`,`is_pinned`,`created_at`),
   CONSTRAINT `fk_posts_category` FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_posts_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=19 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -213,8 +215,10 @@ DROP TABLE IF EXISTS `tags`;
 CREATE TABLE `tags` (
   `id` int(11) NOT NULL AUTO_INCREMENT COMMENT '태그 고유 번호',
   `name` varchar(50) NOT NULL COMMENT '태그 이름',
+  `normalized_name` varchar(50) NOT NULL COMMENT '대소문자 구분 없는 태그 묶음 키',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_tags_name` (`name`)
+  UNIQUE KEY `uq_tags_name` (`name`),
+  UNIQUE KEY `uq_tags_normalized_name` (`normalized_name`)
 ) ENGINE=InnoDB AUTO_INCREMENT=24 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

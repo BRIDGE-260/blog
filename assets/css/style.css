@@ -373,6 +373,15 @@ body {
   color: var(--text-sub);
   margin-bottom: 8px;
 }
+.card__pin {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(212, 175, 122, 0.18);
+  color: var(--accent);
+  font-weight: 700;
+}
 .card__title { font-size: 17px; font-weight: 700; margin-bottom: 6px; line-height: 1.35; }
 .card__excerpt { font-size: 13px; color: var(--text-sub); line-height: 1.5; margin-bottom: 12px; }
 .card__meta {
@@ -439,25 +448,25 @@ body {
 .wf-editor { min-height: 320px; overflow-y: auto; }
 .wf-editor:empty:before { content: attr(data-placeholder); color: #c2c6cb; }
 .wf-editor .editor-img {
-  display: block; margin: 12px auto;
+  display: inline-block; vertical-align: middle; margin: 12px 8px;
   width: 30%; max-width: 100%; height: auto;
   border-radius: 8px; border: 1px solid var(--line);
-  cursor: pointer;
+  cursor: grab;
 }
+.wf-editor .editor-img:active { cursor: grabbing; }
 .wf-editor .editor-img.sel { outline: 3px solid var(--accent); outline-offset: 2px; }
-
-/* 본문 이미지 크기 조절 바 (클릭한 이미지) */
-.img-resize {
-  display: none; align-items: center; gap: 12px;
-  margin-top: 10px; padding: 10px 14px;
-  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
-}
-.img-resize.on { display: flex; }
-.img-resize > span { font-size: 13px; color: var(--text-sub); white-space: nowrap; }
-.img-resize input[type="range"] { flex: 1; }
-.img-resize button {
-  border: 1px solid var(--line); background: none; border-radius: 8px;
-  padding: 6px 12px; font-size: 13px; color: #d33; cursor: pointer; font-family: inherit; white-space: nowrap;
+.img-resize-handle {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  margin-left: -19px;
+  margin-bottom: 8px;
+  vertical-align: bottom;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  cursor: nwse-resize;
 }
 .wf-row { display: flex; gap: 20px; flex-wrap: wrap; }
 .wf-row label { flex: 1; min-width: 180px; }
@@ -586,11 +595,12 @@ body {
 }
 /* 본문 중간에 끼워넣은 이미지 */
 .post__inline-img {
-  display: block;
+  display: inline-block;
+  vertical-align: middle;
   width: 30%;            /* 토큰에 크기 지정 없으면 기본 30%, 있으면 인라인 style 이 덮어씀 */
   max-width: 100%;
   height: auto;
-  margin: 18px auto;
+  margin: 18px 8px;
   border-radius: 8px;
   border: 1px solid var(--line);
   cursor: zoom-in;

@@ -23,6 +23,7 @@ $content    = '';
 $category   = '';
 $visibility = 'all';
 $tagInput   = '';
+$isPinned   = 0;
 
 // ============================================================
 // POST 처리 — 저장
@@ -34,6 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $visibility = $_POST['visibility']   ?? 'all';
     $tagInput   = trim($_POST['tags']    ?? '');
     $status     = ($_POST['status'] ?? 'published') === 'draft' ? 'draft' : 'published';
+    $isPinned   = isset($_POST['is_pinned']) ? 1 : 0;
 
     // 값 검증
     if (!in_array($visibility, ['all', 'neighbor', 'private'], true)) {
@@ -52,12 +54,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $stmt = $conn->prepare(
             "INSERT INTO posts
-               (user_id, category_id, title, content, visibility, status)
-             VALUES (?, ?, ?, ?, ?, ?)"
+               (user_id, category_id, title, content, visibility, status, is_pinned)
+             VALUES (?, ?, ?, ?, ?, ?, ?)"
         );
         $stmt->bind_param(
-            "iissss",
-            $userId, $catParam, $title, $content, $visibility, $status
+            "iissssi",
+            $userId, $catParam, $title, $content, $visibility, $status, $isPinned
         );
         $stmt->execute();
         $postId = $conn->insert_id;
@@ -65,15 +67,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // ── 태그 처리: "#JPOP #시티팝" → 공백 분리 → 있으면 재사용 / 없으면 INSERT ──
         $tagNames = preg_split('/\s+/', $tagInput, -1, PREG_SPLIT_NO_EMPTY);
-        $done = [];   // 같은 글에 중복 태그 방지용
+        $done = [];   // 같은 글에 중복 태그 방지용(대소문자 무시)
         foreach ($tagNames as $raw) {
             $name = trim(ltrim($raw, '#'));     // 앞 # 와 공백 제거
-            if ($name === '' || isset($done[$name])) continue;
-            $done[$name] = true;
+            $normalizedName = mb_strtolower($name, 'UTF-8');
+            if ($name === '' || isset($done[$normalizedName])) continue;
+            $done[$normalizedName] = true;
 
             // 이미 있는 태그면 그 id, 없으면 새로 INSERT
-            $stmt = $conn->prepare("SELECT id FROM tags WHERE name = ?");
-            $stmt->bind_param("s", $name);
+            $stmt = $conn->prepare("SELECT id FROM tags WHERE normalized_name = ?");
+            $stmt->bind_param("s", $normalizedName);
             $stmt->execute();
             $row = $stmt->get_result()->fetch_assoc();
             $stmt->close();
@@ -81,8 +84,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($row) {
                 $tagId = $row['id'];
             } else {
-                $stmt = $conn->prepare("INSERT INTO tags (name) VALUES (?)");
-                $stmt->bind_param("s", $name);
+                $stmt = $conn->prepare("INSERT INTO tags (name, normalized_name) VALUES (?, ?)");
+                $stmt->bind_param("ss", $name, $normalizedName);
                 $stmt->execute();
                 $tagId = $conn->insert_id;
                 $stmt->close();
@@ -177,14 +180,14 @@ require_once __DIR__ . '/../app/header.php';
       </label>
     </div>
 
+    <label class="wf-checkfield">
+      <input type="checkbox" name="is_pinned" value="1" <?= $isPinned ? 'checked' : '' ?>>
+      <span>내 블로그 글 목록 상단에 공지로 고정</span>
+    </label>
+
     <div class="wf-content wf-editor" id="editor" contenteditable="true"
          data-placeholder="내용을 입력하세요. 아래에서 이미지를 고른 뒤 미리보기를 본문으로 드래그하면 그 자리에 사진이 들어갑니다."><?= htmlspecialchars(preg_replace('/\[\[img:[^\]]+\]\]/', '', $content)) ?></div>
     <input type="hidden" name="content" id="contentField">
-    <div id="imgResize" class="img-resize">
-      <span>이미지 크기</span>
-      <input type="range" min="15" max="100" value="30">
-      <button type="button">이미지 삭제</button>
-    </div>
 
     <div class="wf-field">
       <span>태그 (입력 후 Enter)</span>
@@ -207,8 +210,8 @@ require_once __DIR__ . '/../app/header.php';
   </form>
 </section>
 
-<script src="../assets/js/taginput.js"></script>
-<script src="../assets/js/imageinsert.js"></script>
+<script src="../assets/js/taginput.js?v=20260619b"></script>
+<script src="../assets/js/imageinsert.js?v=20260619b"></script>
 
 <?php require_once __DIR__ . '/../app/footer.php'; ?>
 

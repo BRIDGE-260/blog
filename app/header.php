@@ -81,7 +81,7 @@ if (isset($_SESSION['user_id'])) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title><?= htmlspecialchars($pageTitle) ?></title>
-<link rel="stylesheet" href="../assets/css/style.css?v=20260618">
+<link rel="stylesheet" href="../assets/css/style.css?v=20260619">
 </head>
 <body>
 

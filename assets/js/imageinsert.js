@@ -3,9 +3,10 @@
  *
  *   1) 파일 선택 → 아래 미리보기 트레이에 썸네일이 뜸.
  *   2) 미리보기를 본문(#editor, contenteditable)으로 드래그(또는 클릭)하면
- *      그 자리에 실제 사진이 들어가고, 미리보기에선 사라짐(잘라내기).
+ *      글자 사이가 아니라 한 줄 단위로 사진이 들어가고, 미리보기에선 사라짐(잘라내기).
  *   3) 드래그하지 않은 사진은 글에 안 들어감.
- *   4) 폼 제출 시 본문을 직렬화: 텍스트는 그대로, 이미지는 [[img:newK]] 토큰으로 hidden(content)에 담음.
+ *   4) 본문에 들어간 사진은 다시 드래그해 위치를 옮길 수 있고, 사진끼리는 옆에 둘 수 있음.
+ *   5) 폼 제출 시 본문을 직렬화: 텍스트는 그대로, 이미지는 [[img:newK]] 토큰으로 hidden(content)에 담음.
  *      (K = 파일 선택 순서. 서버가 실제 업로드 후 [[img:실제id]] 로 치환)
  *   - 기존 이미지(수정 화면): 트레이 data-existing=[{id,url}] → 드롭 시 [[img:실제id]] 토큰 이미지로 삽입.
  */
@@ -24,9 +25,39 @@
     im.src = url;
     im.className = 'editor-img';
     im.setAttribute('data-token', token);
+    im.draggable = true;
     im.contentEditable = 'false';
     im.style.width = (width || 30) + '%';   // 기본 30% — 클릭해서 조절 가능
     return im;
+  }
+
+  function br() {
+    return document.createElement('br');
+  }
+
+  function isImg(n) {
+    return n && n.nodeType === 1 && n.classList.contains('editor-img');
+  }
+
+  function nextMeaningful(n) {
+    while (n && n.nodeType === 1 && n.classList.contains('img-resize-handle')) n = n.nextSibling;
+    while (n && n.nodeType === 3 && n.nodeValue.trim() === '') n = n.nextSibling;
+    while (n && n.nodeType === 1 && n.classList.contains('img-resize-handle')) n = n.nextSibling;
+    return n;
+  }
+
+  function prevMeaningful(n) {
+    while (n && n.nodeType === 1 && n.classList.contains('img-resize-handle')) n = n.previousSibling;
+    while (n && n.nodeType === 3 && n.nodeValue.trim() === '') n = n.previousSibling;
+    while (n && n.nodeType === 1 && n.classList.contains('img-resize-handle')) n = n.previousSibling;
+    return n;
+  }
+
+  function addLineBreaksAround(node) {
+    var prev = prevMeaningful(node.previousSibling);
+    var next = nextMeaningful(node.nextSibling);
+    if (prev && !isImg(prev) && prev.tagName !== 'BR') node.parentNode.insertBefore(br(), node);
+    if (next && !isImg(next) && next.tagName !== 'BR') node.parentNode.insertBefore(br(), node.nextSibling);
   }
 
   function insertNodeAtCaret(node) {
@@ -42,6 +73,7 @@
     }
     range.deleteContents();
     range.insertNode(node);
+    addLineBreaksAround(node);
     // 이미지 뒤에 캐럿 이동
     range.setStartAfter(node);
     range.collapse(true);
@@ -64,7 +96,28 @@
     }
   }
 
-  // 현재 드래그 중인 미리보기 (커스텀 dataTransfer MIME 호환성 회피)
+  function insertNearPoint(node, e) {
+    var targetImg = e.target && e.target.classList && e.target.classList.contains('editor-img') ? e.target : null;
+    if (targetImg === node) {
+      selectImg(node);
+      return;
+    }
+    if (targetImg) {
+      var r = targetImg.getBoundingClientRect();
+      if (e.clientX < r.left + r.width / 2) {
+        targetImg.parentNode.insertBefore(node, targetImg);
+      } else {
+        targetImg.parentNode.insertBefore(node, targetImg.nextSibling);
+      }
+      selectImg(node);
+      return;
+    }
+    placeCaretAtPoint(e.clientX, e.clientY);
+    insertNodeAtCaret(node);
+    selectImg(node);
+  }
+
+  // 현재 드래그 중인 미리보기/본문 이미지 (커스텀 dataTransfer MIME 호환성 회피)
   var dragItem = null;
 
   // ── 미리보기 트레이 만들기 ──
@@ -78,7 +131,7 @@
     item.appendChild(img); item.appendChild(sp);
 
     item.addEventListener('dragstart', function (e) {
-      dragItem = { url: url, token: token, el: item };
+      dragItem = { type: 'tray', url: url, token: token, el: item };
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', token);   // 일부 브라우저는 데이터가 있어야 드래그 시작
     });
@@ -111,9 +164,9 @@
   editor.addEventListener('drop', function (e) {
     e.preventDefault();
     if (!dragItem) return;
-    placeCaretAtPoint(e.clientX, e.clientY);
-    insertNodeAtCaret(makeImg(dragItem.url, dragItem.token));
-    if (dragItem.el) dragItem.el.remove();   // 잘라내기
+    var img = dragItem.type === 'image' ? dragItem.el : makeImg(dragItem.url, dragItem.token);
+    insertNearPoint(img, e);
+    if (dragItem.type === 'tray' && dragItem.el) dragItem.el.remove();   // 잘라내기
     dragItem = null;
   });
 
@@ -125,32 +178,68 @@
     else if (e.clientY > window.innerHeight - m) window.scrollBy(0, 22);
   });
 
-  // ── 본문 이미지 클릭 → 크기 조절 / 삭제 ──
-  var resizer = document.getElementById('imgResize');
-  var slider  = resizer ? resizer.querySelector('input[type="range"]') : null;
-  var delBtn  = resizer ? resizer.querySelector('button') : null;
   var selImg  = null;
+  var resizeHandle = document.createElement('span');
+  resizeHandle.className = 'img-resize-handle';
+  resizeHandle.title = '드래그해서 이미지 크기 조절';
+  resizeHandle.contentEditable = 'false';
 
   function selectImg(img) {
     selImg = img;
     editor.querySelectorAll('.editor-img').forEach(function (i) { i.classList.remove('sel'); });
+    resizeHandle.remove();
     if (img) {
       img.classList.add('sel');
-      if (slider) slider.value = parseInt(img.style.width, 10) || 30;
-      if (resizer) resizer.classList.add('on');
-    } else if (resizer) {
-      resizer.classList.remove('on');
+      img.insertAdjacentElement('afterend', resizeHandle);
     }
   }
+  editor.addEventListener('dragstart', function (e) {
+    if (e.target.classList && e.target.classList.contains('editor-img')) {
+      selectImg(e.target);
+      dragItem = { type: 'image', el: e.target };
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', e.target.getAttribute('data-token') || 'image');
+    }
+  });
+  editor.addEventListener('dragend', function () { dragItem = null; });
   editor.addEventListener('click', function (e) {
     if (e.target.classList && e.target.classList.contains('editor-img')) selectImg(e.target);
     else selectImg(null);
   });
-  if (slider) slider.addEventListener('input', function () {
-    if (selImg) selImg.style.width = slider.value + '%';
+  document.addEventListener('keydown', function (e) {
+    if (!selImg) return;
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      var active = document.activeElement;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
+      e.preventDefault();
+      selImg.remove();
+      selectImg(null);
+    }
   });
-  if (delBtn) delBtn.addEventListener('click', function () {
-    if (selImg) { selImg.remove(); selectImg(null); }
+
+  resizeHandle.addEventListener('mousedown', function (e) {
+    if (!selImg) return;
+    e.preventDefault();
+    e.stopPropagation();
+    selImg.draggable = false;
+    var editorWidth = editor.clientWidth || 1;
+    var startX = e.clientX;
+    var startWidth = selImg.getBoundingClientRect().width;
+
+    function onMove(ev) {
+      var px = Math.max(80, Math.min(editorWidth, startWidth + ev.clientX - startX));
+      var percent = Math.max(15, Math.min(100, Math.round(px / editorWidth * 100)));
+      selImg.style.width = percent + '%';
+    }
+
+    function onUp() {
+      selImg.draggable = true;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   });
 
   // ── 직렬화: 본문 → 텍스트 + [[img:token]] ──
@@ -161,10 +250,15 @@
         out += n.nodeValue;
       } else if (n.nodeType === 1) {              // 요소
         var tag = n.tagName.toLowerCase();
+        if (n.classList && n.classList.contains('img-resize-handle')) {
+          return;
+        }
         if (tag === 'img' && n.getAttribute('data-token')) {
           var w = parseInt(n.style.width, 10);
           var suffix = (w && w !== 30) ? '|' + w : '';   // 기본 30% 는 생략
-          out += '\n[[img:' + n.getAttribute('data-token') + suffix + ']]\n';
+          var prev = prevMeaningful(n.previousSibling);
+          var next = nextMeaningful(n.nextSibling);
+          out += (isImg(prev) ? '' : '\n') + '[[img:' + n.getAttribute('data-token') + suffix + ']]' + (isImg(next) ? '' : '\n');
         } else if (tag === 'br') {
           out += '\n';
         } else if (tag === 'div' || tag === 'p') {

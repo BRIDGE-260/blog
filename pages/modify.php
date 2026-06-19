@@ -35,6 +35,7 @@ $error = '';
 $title      = $post['title'];
 $content    = $post['content'];
 $visibility = $post['visibility'];
+$isPinned   = (int)($post['is_pinned'] ?? 0);
 
 // 현재 글의 카테고리 이름 (없으면 '')
 $category = '';
@@ -71,6 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $visibility = $_POST['visibility']   ?? 'all';
     $tagInput   = trim($_POST['tags']    ?? '');
     $status     = ($_POST['status'] ?? 'published') === 'draft' ? 'draft' : 'published';
+    $isPinned   = isset($_POST['is_pinned']) ? 1 : 0;
 
     if (!in_array($visibility, ['all', 'neighbor', 'private'], true)) $visibility = 'all';
     if ($title === '' || $content === '') $error = '제목과 내용을 입력해주세요.';
@@ -109,10 +111,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // 2) 글 UPDATE (썸네일 컬럼은 더 이상 안 씀)
         $stmt = $conn->prepare(
             "UPDATE posts
-               SET category_id = ?, title = ?, content = ?, visibility = ?, status = ?, updated_at = NOW()
+               SET category_id = ?, title = ?, content = ?, visibility = ?, status = ?, is_pinned = ?, updated_at = NOW()
              WHERE id = ? AND user_id = ?"
         );
-        $stmt->bind_param("issssii", $catParam, $title, $content, $visibility, $status, $postId, $userId);
+        $stmt->bind_param("issssiii", $catParam, $title, $content, $visibility, $status, $isPinned, $postId, $userId);
         $stmt->execute();
         $stmt->close();
 
@@ -160,11 +162,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $done = [];
         foreach ($names as $raw) {
             $name = trim(ltrim($raw, '#'));
-            if ($name === '' || isset($done[$name])) continue;
-            $done[$name] = true;
+            $normalizedName = mb_strtolower($name, 'UTF-8');
+            if ($name === '' || isset($done[$normalizedName])) continue;
+            $done[$normalizedName] = true;
 
-            $stmt = $conn->prepare("SELECT id FROM tags WHERE name = ?");
-            $stmt->bind_param("s", $name);
+            $stmt = $conn->prepare("SELECT id FROM tags WHERE normalized_name = ?");
+            $stmt->bind_param("s", $normalizedName);
             $stmt->execute();
             $row = $stmt->get_result()->fetch_assoc();
             $stmt->close();
@@ -172,8 +175,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($row) {
                 $tagId = $row['id'];
             } else {
-                $stmt = $conn->prepare("INSERT INTO tags (name) VALUES (?)");
-                $stmt->bind_param("s", $name);
+                $stmt = $conn->prepare("INSERT INTO tags (name, normalized_name) VALUES (?, ?)");
+                $stmt->bind_param("ss", $name, $normalizedName);
                 $stmt->execute();
                 $tagId = $conn->insert_id;
                 $stmt->close();
@@ -259,14 +262,14 @@ require_once __DIR__ . '/../app/header.php';
       </label>
     </div>
 
+    <label class="wf-checkfield">
+      <input type="checkbox" name="is_pinned" value="1" <?= $isPinned ? 'checked' : '' ?>>
+      <span>내 블로그 글 목록 상단에 공지로 고정</span>
+    </label>
+
     <div class="wf-content wf-editor" id="editor" contenteditable="true"
          data-placeholder="내용을 입력하세요. 아래에서 이미지를 고른 뒤 미리보기를 본문으로 드래그하면 그 자리에 사진이 들어갑니다."><?= buildEditorHtml($content, $postImages) ?></div>
     <input type="hidden" name="content" id="contentField">
-    <div id="imgResize" class="img-resize">
-      <span>이미지 크기</span>
-      <input type="range" min="15" max="100" value="30">
-      <button type="button">이미지 삭제</button>
-    </div>
 
     <div class="wf-field">
       <span>태그 (입력 후 Enter)</span>
@@ -290,8 +293,8 @@ require_once __DIR__ . '/../app/header.php';
   </form>
 </section>
 
-<script src="../assets/js/taginput.js"></script>
-<script src="../assets/js/imageinsert.js"></script>
+<script src="../assets/js/taginput.js?v=20260619b"></script>
+<script src="../assets/js/imageinsert.js?v=20260619b"></script>
 
 <?php require_once __DIR__ . '/../app/footer.php'; ?>
 

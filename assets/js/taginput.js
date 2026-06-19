@@ -21,9 +21,12 @@ document.querySelectorAll('.taginput').forEach(function (box) {
       box.insertBefore(chip, field);
     });
   }
+  function norm(v) {
+    return v.toLocaleLowerCase();
+  }
   function add(v) {
     v = v.replace(/#/g, '').trim();
-    if (v && !tags.includes(v)) { tags.push(v); render(); }
+    if (v && !tags.some(t => norm(t) === norm(v))) { tags.push(v); render(); }
   }
 
   field.addEventListener('keydown', function (e) {
