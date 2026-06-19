@@ -95,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>로그인 / 회원가입 · MyBlog</title>
-<link rel="stylesheet" href="../assets/css/auth.css">
+<link rel="stylesheet" href="../assets/css/auth.css?v=20260619b">
 </head>
 <body>
 
@@ -157,11 +157,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </label>
         <label>
           <span>닉네임</span>
-          <input type="text" name="nickname" required>
+          <input type="text" name="nickname" required data-duplicate-field="nickname" autocomplete="nickname">
+          <small class="check-msg" data-check-msg="nickname"></small>
         </label>
         <label>
           <span>이메일</span>
-          <input type="email" name="email" required>
+          <input type="email" name="email" required data-duplicate-field="email" autocomplete="email">
+          <small class="check-msg" data-check-msg="email"></small>
         </label>
         <label>
           <span>비밀번호</span>
@@ -179,6 +181,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   document.querySelector('.img__btn').addEventListener('click', function () {
     document.querySelector('.cont').classList.toggle('s--signup');
   });
+
+  (function () {
+    var form = document.querySelector('.sign-up form');
+    if (!form) return;
+
+    var submitBtn = form.querySelector('.submit');
+    var fields = form.querySelectorAll('[data-duplicate-field]');
+    var timers = {};
+    var states = { email: null, nickname: null };
+
+    function setMessage(field, type, message) {
+      var msg = form.querySelector('[data-check-msg="' + field + '"]');
+      var input = form.querySelector('[data-duplicate-field="' + field + '"]');
+      if (!msg || !input) return;
+
+      msg.textContent = message || '';
+      msg.className = 'check-msg' + (type ? ' ' + type : '');
+      input.classList.remove('is-ok', 'is-bad');
+      if (type === 'ok') input.classList.add('is-ok');
+      if (type === 'bad') input.classList.add('is-bad');
+    }
+
+    function updateSubmit() {
+      submitBtn.disabled = states.email === false || states.nickname === false;
+    }
+
+    function checkDuplicate(input) {
+      var field = input.dataset.duplicateField;
+      var value = input.value.trim();
+
+      clearTimeout(timers[field]);
+      states[field] = null;
+      updateSubmit();
+
+      if (value === '') {
+        setMessage(field, '', '');
+        return;
+      }
+
+      setMessage(field, 'pending', '확인 중...');
+      timers[field] = setTimeout(async function () {
+        try {
+          var res = await fetch('../api/auth_check.php?field=' + encodeURIComponent(field) + '&value=' + encodeURIComponent(value), {
+            headers: { 'Accept': 'application/json' }
+          });
+          var data = await res.json();
+          if (input.value.trim() !== value) return;
+          states[field] = data.available === true;
+          setMessage(field, data.available ? 'ok' : 'bad', data.message || '');
+          updateSubmit();
+        } catch (err) {
+          states[field] = null;
+          setMessage(field, 'bad', '중복 확인에 실패했어요.');
+          updateSubmit();
+        }
+      }, 300);
+    }
+
+    fields.forEach(function (input) {
+      input.addEventListener('input', function () {
+        checkDuplicate(input);
+      });
+      input.addEventListener('blur', function () {
+        checkDuplicate(input);
+      });
+    });
+
+    form.addEventListener('submit', function (e) {
+      if (states.email === false || states.nickname === false) {
+        e.preventDefault();
+      }
+    });
+  })();
 </script>
 </body>
 </html>

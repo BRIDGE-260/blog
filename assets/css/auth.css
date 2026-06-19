@@ -215,7 +215,7 @@ h2 {
 label {
   display: block;
   width: 260px;            /* $inputW */
-  margin: 22px auto 0;
+  margin: 18px auto 0;
   text-align: center;
 }
 label span {
@@ -233,12 +233,30 @@ input {
   border-bottom: 1px solid rgba(0, 0, 0, 0.4);
   text-align: center;
 }
+input.is-ok { border-bottom-color: #2e9d58; }
+input.is-bad { border-bottom-color: #c0392b; }
+
+.check-msg {
+  display: block;
+  min-height: 17px;
+  margin-top: 5px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #9a9a9a;
+}
+.check-msg.ok { color: #2e9d58; }
+.check-msg.bad { color: #c0392b; }
+.check-msg.pending { color: #b88d54; }
 
 .submit {
   margin-top: 34px;
   margin-bottom: 16px;
   background: #d4af7a;     /* 원본 codepen 탄색 */
   text-transform: uppercase;
+}
+.submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 /* ── 슬라이딩(폼 전환) ─────────────────── */

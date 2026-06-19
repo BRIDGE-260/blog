@@ -129,6 +129,7 @@ http://localhost/blog/tools/seed.php
 현재 SQL 기준으로 사용하는 주요 테이블은 다음과 같습니다.
 
 - `users`
+- `blog_settings`
 - `categories`
 - `posts`
 - `comments`

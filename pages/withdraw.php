@@ -36,6 +36,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (!empty($me['profile_image_stored'])) $files[] = $me['profile_image_stored'];
 
+        // 내 블로그 커스터마이징 이미지
+        $stmt = $conn->prepare(
+            "SELECT background_image_stored, header_image_stored
+             FROM blog_settings
+             WHERE user_id = ?"
+        );
+        $stmt->bind_param("i", $userId);
+        $stmt->execute();
+        if ($settingsFiles = $stmt->get_result()->fetch_assoc()) {
+            if (!empty($settingsFiles['background_image_stored'])) $files[] = $settingsFiles['background_image_stored'];
+            if (!empty($settingsFiles['header_image_stored'])) $files[] = $settingsFiles['header_image_stored'];
+        }
+        $stmt->close();
+
         // 내 글의 썸네일
         $stmt = $conn->prepare("SELECT thumbnail_stored FROM posts WHERE user_id = ? AND thumbnail_stored IS NOT NULL");
         $stmt->bind_param("i", $userId);

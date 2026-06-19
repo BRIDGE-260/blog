@@ -12,6 +12,7 @@
 -- Clear existing rows before loading samples.
 -- Use DELETE instead of TRUNCATE because TRUNCATE can fail on FK-referenced tables.
 DELETE FROM `guestbook`;
+DELETE FROM `blog_settings`;
 DELETE FROM `notification_reads`;
 DELETE FROM `scraps`;
 DELETE FROM `post_images`;
@@ -46,6 +47,15 @@ INSERT INTO `users`
 (4, 'hoonie@blog.com', '$2y$10$fJOYLABiJDTvNuwWtluzr.XDSwkZplqwi1lScH9mMXldAMyG/9Zvm', '정훈', 'hoonie_cinema', '남성', '훈이의 시네마', '극장에서 본 영화와 집에서 다시 본 장면들을 정리합니다.', 'profile_hoonie.png', 'sample_profile_04.png', '2026-05-27 18:42:00', '2026-06-14 23:10:00'),
 (5, 'sora@blog.com', '$2y$10$fJOYLABiJDTvNuwWtluzr.XDSwkZplqwi1lScH9mMXldAMyG/9Zvm', '한소라', 'sora_travel', '여성', '소라의 느린 여행', '골목, 맛집, 작은 숙소를 천천히 걷고 기록해요.', 'profile_sora.png', 'sample_profile_05.png', '2026-06-01 10:21:00', '2026-06-15 09:00:00'),
 (6, 'junho@blog.com', '$2y$10$fJOYLABiJDTvNuwWtluzr.XDSwkZplqwi1lScH9mMXldAMyG/9Zvm', '최준호', 'jun_photo', '남성', '준호의 사진첩', '동네 산책 사진과 책에서 만난 문장을 같이 모읍니다.', 'profile_junho.png', 'sample_profile_06.png', '2026-06-03 16:47:00', '2026-06-12 22:00:00');
+
+INSERT INTO `blog_settings`
+(`user_id`, `accent_color`, `background_color`, `background_image_original`, `background_image_stored`, `background_repeat`, `background_position`, `background_size`, `header_image_original`, `header_image_stored`, `header_height`, `layout_type`, `title_align`, `sidebar_position`, `profile_shape`, `profile_card_color`, `post_list_style`, `thumbnail_style`, `font_style`, `show_intro`, `show_post_summary`, `show_visit_count`, `created_at`, `updated_at`) VALUES
+(1, '#c89b5d', '#f3eee7', NULL, NULL, 'no-repeat', 'center', 'cover', NULL, NULL, 220, 'standard', 'left', 'left', 'circle', '#ffffff', 'card', 'wide', 'sans', 1, 1, 1, '2026-06-02 09:00:00', NULL),
+(2, '#4f8fbd', '#edf4fb', NULL, NULL, 'no-repeat', 'center', 'cover', NULL, NULL, 200, 'wide', 'left', 'right', 'rounded', '#ffffff', 'list', 'wide', 'sans', 1, 1, 1, '2026-06-02 09:00:00', NULL),
+(3, '#d48a9b', '#f8f1f3', NULL, NULL, 'no-repeat', 'center', 'cover', NULL, NULL, 240, 'compact', 'center', 'left', 'circle', '#fffafa', 'card', 'square', 'rounded', 1, 1, 1, '2026-06-02 09:00:00', NULL),
+(4, '#6f6f8f', '#eeeef4', NULL, NULL, 'no-repeat', 'center', 'cover', NULL, NULL, 220, 'wide', 'center', 'right', 'square', '#ffffff', 'list', 'hidden', 'serif', 1, 1, 1, '2026-06-02 09:00:00', NULL),
+(5, '#7aa87a', '#eef5ed', NULL, NULL, 'no-repeat', 'center', 'cover', NULL, NULL, 230, 'standard', 'left', 'left', 'rounded', '#ffffff', 'card', 'wide', 'sans', 1, 1, 1, '2026-06-02 09:00:00', NULL),
+(6, '#8a8f98', '#f1f1ef', NULL, NULL, 'no-repeat', 'center', 'cover', NULL, NULL, 210, 'compact', 'left', 'left', 'square', '#ffffff', 'card', 'square', 'serif', 1, 1, 1, '2026-06-02 09:00:00', NULL);
 
 INSERT INTO `categories` (`id`, `user_id`, `name`, `sort_order`, `created_at`) VALUES
 (1, 1, '음악 이야기', 1, '2026-05-20 09:20:00'),

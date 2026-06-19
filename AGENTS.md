@@ -35,7 +35,7 @@ host=localhost, username=user1, password=1234, database=blog
 - 요청하지 않은 기능/파일을 임의로 추가하지 말 것.
 - 결정이 갈리는 지점은 먼저 묻고 진행. "왜 그렇게 하는지" 이유 설명을 선호.
 
-## 데이터베이스 구조 (13개 테이블)
+## 데이터베이스 구조 (14개 테이블)
 
 `database/blog_schema.sql` 로 생성, `database/blog_sample_data.sql` 로 샘플 데이터.
 실행 순서: schema → sample_data (ALTER 불필요, schema에 전부 반영됨).
@@ -43,26 +43,33 @@ host=localhost, username=user1, password=1234, database=blog
 1. **users** — id, email(UQ), password, name, nickname(UQ), gender(NULL),
    blog_title, intro, profile_image_original, profile_image_stored, created_at,
    notifications_read_at(마지막 소식 확인 시각)
-2. **categories** — id, user_id(FK), name, sort_order, created_at
-3. **posts** — id, user_id(FK), category_id(FK,NULL), title, content,
+2. **blog_settings** — user_id(PK/FK), accent_color, background_color,
+   background_image_original/stored, background_repeat, background_position,
+   background_size, header_image_original/stored, header_height, layout_type,
+   title_align, sidebar_position, profile_shape, profile_card_color, post_list_style,
+   thumbnail_style, font_style, show_intro, show_post_summary, show_visit_count,
+   created_at, updated_at.
+   회원 1명당 설정 1행. 회원 삭제 시 CASCADE.
+3. **categories** — id, user_id(FK), name, sort_order, created_at
+4. **posts** — id, user_id(FK), category_id(FK,NULL), title, content,
    thumbnail_original, thumbnail_stored, view_count, visibility(all/neighbor/private),
    status(draft/published), created_at, updated_at
-4. **comments** — id, post_id(FK), parent_id(FK→comments.id, NULL=일반댓글/값=답글, ON DELETE CASCADE),
+5. **comments** — id, post_id(FK), parent_id(FK→comments.id, NULL=일반댓글/값=답글, ON DELETE CASCADE),
    user_id(FK), content, created_at. 답글은 1단계만(부모는 최상위 댓글일 때만 허용).
-5. **likes** — id, post_id(FK), user_id(FK), created_at, UNIQUE(post_id,user_id)
-6. **neighbors** — id, user_id(FK 추가한 사람), neighbor_id(FK 추가당한 사람),
+6. **likes** — id, post_id(FK), user_id(FK), created_at, UNIQUE(post_id,user_id)
+7. **neighbors** — id, user_id(FK 추가한 사람), neighbor_id(FK 추가당한 사람),
    created_at, UNIQUE(user_id,neighbor_id)
-7. **tags** — id, name(UQ)
-8. **post_tags** — post_id(FK), tag_id(FK), PK(post_id,tag_id) ← 글-태그 N:M
-9. **visit_logs** — id, user_id(FK), visit_date, count, UNIQUE(user_id,visit_date)
+8. **tags** — id, name(UQ)
+9. **post_tags** — post_id(FK), tag_id(FK), PK(post_id,tag_id) ← 글-태그 N:M
+10. **visit_logs** — id, user_id(FK), visit_date, count, UNIQUE(user_id,visit_date)
    방문 처리: INSERT ... ON DUPLICATE KEY UPDATE count=count+1 (매번 카운트 방식)
-10. **post_images** — id, post_id(FK, ON DELETE CASCADE), original, stored, sort_order
+11. **post_images** — id, post_id(FK, ON DELETE CASCADE), original, stored, sort_order
     글 본문에 첨부하는 여러 장 이미지(썸네일과 별개). view 에서 본문 아래 갤러리로 표시.
-11. **scraps** — id, user_id(FK), post_id(FK), created_at, UNIQUE(user_id,post_id)
+12. **scraps** — id, user_id(FK), post_id(FK), created_at, UNIQUE(user_id,post_id)
     스크랩/북마크. likes 와 똑같은 구조. view 에서 토글, scraps.php 에서 모아보기.
-12. **guestbook** — id, owner_id(FK 블로그주인), user_id(FK 글쓴이), content, created_at
+13. **guestbook** — id, owner_id(FK 블로그주인), user_id(FK 글쓴이), content, created_at
     방명록(블로그 자체에 남기는 글). guestbook.php?id=주인id. 삭제는 글쓴이 또는 블로그주인.
-13. **notification_reads** — id, user_id(FK), notification_key, read_at, UNIQUE(user_id,notification_key)
+14. **notification_reads** — id, user_id(FK), notification_key, read_at, UNIQUE(user_id,notification_key)
     내 소식 항목별 읽음 처리. key 예: `comment:3`, `like:7`, `neighbor_post:12`, `guestbook:2`.
 
 ### 이미지 파일 처리 규칙
@@ -127,7 +134,7 @@ host=localhost, username=user1, password=1234, database=blog
 - 예전 루트 URL(`view.php`, `write.php` 등)은 `.htaccess` 로 `pages/` 파일에 연결한다. 루트 `index.php` 는 `pages/index.php` 로 리다이렉트한다.
 - 공개 페이지(비로그인 열람 가능): `index.php`, `view.php`, `blog.php`, `guestbook.php`.
   게스트는 viewer id 를 0 으로 두고, 글쓰기·공감·댓글·이웃 등 "행동"만 `$isLogin` 으로 로그인 요구.
-  그 외 페이지(write/modify/delete/manage/profile/password/withdraw/stats/notifications/neighbors/neighbor_posts/bloggers/liked/scraps/categories_manage)는 상단에서 로그인 검사 후 auth.php 로 리다이렉트.
+  그 외 페이지(write/modify/delete/manage/profile/password/withdraw/stats/notifications/neighbors/neighbor_posts/bloggers/liked/scraps/categories_manage/blog_customize)는 상단에서 로그인 검사 후 auth.php 로 리다이렉트.
 
 ## 현재까지 만든 파일 (전부 완성, prepared statement 준수)
 
@@ -144,6 +151,9 @@ host=localhost, username=user1, password=1234, database=blog
 - `pages/blog.php` — 내 블로그 메인: 사이드바(프로필·카테고리·방문자수) + 글목록 + 카테고리필터
   - 이웃 추가/취소(neighbors) + 방문 카운트(visit_logs)
   - 본인 보기일 때 글 관리 기능 통합: 상태 탭(전체/발행/임시저장 + 개수) + 카드별 수정/삭제 버튼
+  - `blog_settings` 기반 커스터마이징 적용: 헤더/배경/색상/레이아웃/프로필 모양/목록 스타일
+- `pages/blog_customize.php` — 내 블로그 꾸미기: 포인트색·배경색·프로필 카드색, 헤더/배경 이미지,
+  배경 표시 방식, 레이아웃, 사이드바 위치, 프로필 모양, 글 목록/썸네일/폰트/표시 옵션 저장
 - `pages/manage.php` — 내 글 관리 화면은 blog.php 로 통합됨. 이제 `blog.php?id=내id&status=..` 로 리다이렉트만
 - `pages/neighbors.php` — 이웃 + 블로그 찾기(탭 통합): `내 이웃`(서로이웃/취소·나를 추가한 사람) /
   `블로그 찾기`(tab=find: 전체 사용자 + 검색(닉네임·제목) + 정렬(글많은/최신가입/이름) + 이웃추가)
@@ -164,7 +174,7 @@ host=localhost, username=user1, password=1234, database=blog
 - `api/notification_read.php` — 소식 항목 클릭 시 개별 읽음 처리 JSON 엔드포인트.
 - `app/footer.php` — 공통 토스트(`showToast`)와 공통 확인 모달(`confirmAction`) 포함. 회원가입/로그인 성공 토스트, 삭제 확인 모달에서 사용.
 - `.htaccess` — 예전 루트 PHP URL을 새 `pages/` / `api/` 경로로 연결.
-- ※ DB 13개 테이블 전부 사용 중. 이미지 업로드 폴더는 `uploads/`(자동 생성).
+- ※ DB 14개 테이블 전부 사용 중. 이미지 업로드 폴더는 `uploads/`(자동 생성).
 
 ## 다음 할 일 (후보)
 
@@ -205,7 +215,7 @@ host=localhost, username=user1, password=1234, database=blog
 
 ### 완료된 항목 (확인됨)
 
-- ✅ DB SQL 파일 레포 추가: `blog_schema.sql`(구조, 12개 테이블 CREATE) + `blog_sample_data.sql`(데이터 INSERT).
+- ✅ DB SQL 파일 레포 추가: `blog_schema.sql`(구조 CREATE) + `blog_sample_data.sql`(데이터 INSERT).
   mysqldump 로 추출. 실행 순서 schema → sample_data. (FK 체크 비활성 헤더 포함되어 삽입 순서 안전)
 - ✅ 내 글(manage.php) → 내 블로그(blog.php) 통합: 본인 보기에 상태탭(전체/발행/임시저장)+카드별 수정/삭제.
   상단 네비 "내 글" 제거, manage.php 는 blog.php 로 리다이렉트. "블로그 찾기"도 네비에서 제거(이웃 안의 탭).

@@ -31,6 +31,89 @@ if (!$owner) {
 
 $isOwner = $ownerId === (int)$viewerId;
 
+$blogSettings = [
+    'accent_color' => '#d4af7a',
+    'background_color' => '#f5f6f8',
+    'background_image_stored' => null,
+    'background_repeat' => 'no-repeat',
+    'background_position' => 'center',
+    'background_size' => 'cover',
+    'header_image_stored' => null,
+    'header_height' => 220,
+    'layout_type' => 'standard',
+    'title_align' => 'left',
+    'sidebar_position' => 'left',
+    'profile_shape' => 'circle',
+    'profile_card_color' => '#ffffff',
+    'post_list_style' => 'card',
+    'thumbnail_style' => 'wide',
+    'font_style' => 'sans',
+    'show_intro' => 1,
+    'show_post_summary' => 1,
+    'show_visit_count' => 1,
+];
+
+$stmt = $conn->prepare(
+    "SELECT accent_color, background_color, background_image_stored, background_repeat,
+            background_position, background_size, header_image_stored, header_height,
+            layout_type, title_align, sidebar_position, profile_shape, profile_card_color,
+            post_list_style, thumbnail_style, font_style, show_intro, show_post_summary,
+            show_visit_count
+     FROM blog_settings
+     WHERE user_id = ?"
+);
+$stmt->bind_param("i", $ownerId);
+$stmt->execute();
+$settingsRow = $stmt->get_result()->fetch_assoc();
+$stmt->close();
+if ($settingsRow) {
+    $blogSettings = array_merge($blogSettings, $settingsRow);
+}
+
+function blogColor($value, $fallback) {
+    return preg_match('/^#[0-9a-fA-F]{6}$/', (string)$value) ? $value : $fallback;
+}
+function blogChoice($value, $allowed, $fallback) {
+    return in_array($value, $allowed, true) ? $value : $fallback;
+}
+
+$blogSettings['accent_color'] = blogColor($blogSettings['accent_color'], '#d4af7a');
+$blogSettings['background_color'] = blogColor($blogSettings['background_color'], '#f5f6f8');
+$blogSettings['profile_card_color'] = blogColor($blogSettings['profile_card_color'], '#ffffff');
+$blogSettings['background_repeat'] = blogChoice($blogSettings['background_repeat'], ['no-repeat', 'repeat'], 'no-repeat');
+$blogSettings['background_position'] = blogChoice($blogSettings['background_position'], ['left', 'center', 'right'], 'center');
+$blogSettings['background_size'] = blogChoice($blogSettings['background_size'], ['cover', 'contain', 'auto'], 'cover');
+$blogSettings['layout_type'] = blogChoice($blogSettings['layout_type'], ['standard', 'wide', 'compact'], 'standard');
+$blogSettings['title_align'] = blogChoice($blogSettings['title_align'], ['left', 'center'], 'left');
+$blogSettings['sidebar_position'] = blogChoice($blogSettings['sidebar_position'], ['left', 'right'], 'left');
+$blogSettings['profile_shape'] = blogChoice($blogSettings['profile_shape'], ['circle', 'rounded', 'square'], 'circle');
+$blogSettings['post_list_style'] = blogChoice($blogSettings['post_list_style'], ['card', 'list'], 'card');
+$blogSettings['thumbnail_style'] = blogChoice($blogSettings['thumbnail_style'], ['wide', 'square', 'hidden'], 'wide');
+$blogSettings['font_style'] = blogChoice($blogSettings['font_style'], ['sans', 'serif', 'rounded'], 'sans');
+$blogSettings['header_height'] = min(360, max(120, (int)$blogSettings['header_height']));
+
+$blogStyle = '--blog-accent:' . $blogSettings['accent_color'] . ';'
+    . '--blog-bg:' . $blogSettings['background_color'] . ';'
+    . '--blog-profile-bg:' . $blogSettings['profile_card_color'] . ';'
+    . '--blog-header-height:' . (int)$blogSettings['header_height'] . 'px;';
+$blogClasses = [
+    'blog-shell',
+    'blog-shell--layout-' . $blogSettings['layout_type'],
+    'blog-shell--sidebar-' . $blogSettings['sidebar_position'],
+    'blog-shell--profile-' . $blogSettings['profile_shape'],
+    'blog-shell--posts-' . $blogSettings['post_list_style'],
+    'blog-shell--thumb-' . $blogSettings['thumbnail_style'],
+    'blog-shell--font-' . $blogSettings['font_style'],
+    'blog-shell--title-' . $blogSettings['title_align'],
+];
+$blogBgStyle = 'background-color:' . $blogSettings['background_color'] . ';';
+if (!empty($blogSettings['background_image_stored'])) {
+    $blogBgStyle .= "background-image:url('../uploads/" . htmlspecialchars($blogSettings['background_image_stored'], ENT_QUOTES) . "');"
+        . 'background-repeat:' . $blogSettings['background_repeat'] . ';'
+        . 'background-position:' . $blogSettings['background_position'] . ' top;'
+        . 'background-size:' . $blogSettings['background_size'] . ';';
+}
+
 // 내가 이 블로그 주인을 이웃 추가했는지 (버튼 상태용)
 $iAddedOwner = false;
 if (!$isOwner) {
@@ -186,6 +269,24 @@ $pageTitle = ($owner['blog_title'] ?: $owner['nickname'] . '님의 블로그') .
 require_once __DIR__ . '/../app/header.php';
 ?>
 
+<div class="<?= htmlspecialchars(implode(' ', $blogClasses)) ?>"
+     style="<?= htmlspecialchars($blogStyle . $blogBgStyle, ENT_QUOTES) ?>">
+
+  <section class="blog-cover">
+    <?php if (!empty($blogSettings['header_image_stored'])): ?>
+      <img src="../uploads/<?= htmlspecialchars($blogSettings['header_image_stored']) ?>" alt="">
+    <?php endif; ?>
+    <div class="blog-cover__text">
+      <h1><?= htmlspecialchars($owner['blog_title'] ?: $owner['nickname'] . '님의 블로그') ?></h1>
+      <?php if (!empty($owner['intro']) && (int)$blogSettings['show_intro'] === 1): ?>
+        <p><?= nl2br(htmlspecialchars($owner['intro'])) ?></p>
+      <?php endif; ?>
+      <?php if ($isOwner): ?>
+        <a href="blog_customize.php">블로그 꾸미기</a>
+      <?php endif; ?>
+    </div>
+  </section>
+
 <div class="blog-layout">
 
   <!-- 사이드바 -->
@@ -200,7 +301,7 @@ require_once __DIR__ . '/../app/header.php';
       </div>
       <div class="profile__title"><?= htmlspecialchars($owner['blog_title'] ?: $owner['nickname'] . '님의 블로그') ?></div>
       <div class="profile__nick"><?= htmlspecialchars($owner['nickname']) ?></div>
-      <?php if (!empty($owner['intro'])): ?>
+      <?php if (!empty($owner['intro']) && (int)$blogSettings['show_intro'] === 1): ?>
         <p class="profile__intro"><?= nl2br(htmlspecialchars($owner['intro'])) ?></p>
       <?php endif; ?>
 
@@ -213,12 +314,17 @@ require_once __DIR__ . '/../app/header.php';
         </form>
       <?php endif; ?>
 
-      <div class="profile__visit">
-        오늘 <?= $todayVisit ?> · 전체 <?= $totalVisit ?>
-        <?php if ($isOwner): ?><br><a href="stats.php">통계 보기</a> · <a href="liked.php">좋아요한 글</a> · <a href="scraps.php">스크랩</a><?php endif; ?>
-      </div>
+      <?php if ((int)$blogSettings['show_visit_count'] === 1): ?>
+        <div class="profile__visit">
+          오늘 <?= $todayVisit ?> · 전체 <?= $totalVisit ?>
+          <?php if ($isOwner): ?><br><a href="stats.php">통계 보기</a> · <a href="liked.php">좋아요한 글</a> · <a href="scraps.php">스크랩</a><?php endif; ?>
+        </div>
+      <?php elseif ($isOwner): ?>
+        <div class="profile__visit"><a href="stats.php">통계 보기</a> · <a href="liked.php">좋아요한 글</a> · <a href="scraps.php">스크랩</a></div>
+      <?php endif; ?>
 
       <a class="profile__gb" href="guestbook.php?id=<?= $ownerId ?>">📖 방명록</a>
+      <?php if ($isOwner): ?><a class="profile__gb" href="blog_customize.php">블로그 꾸미기</a><?php endif; ?>
     </div>
 
     <nav class="cat-list">
@@ -265,7 +371,9 @@ require_once __DIR__ . '/../app/header.php';
                 <?php if ($isOwner && $p['visibility'] !== 'all'): ?> · <?= $p['visibility'] === 'private' ? '비공개' : '이웃공개' ?><?php endif; ?>
               </span>
               <h2 class="card__title"><?= htmlspecialchars($p['title']) ?></h2>
-              <p class="card__excerpt"><?= htmlspecialchars(mb_strimwidth(strip_tags($p['content']), 0, 70, '…')) ?></p>
+              <?php if ((int)$blogSettings['show_post_summary'] === 1): ?>
+                <p class="card__excerpt"><?= htmlspecialchars(mb_strimwidth(strip_tags($p['content']), 0, 70, '…')) ?></p>
+              <?php endif; ?>
               <div class="card__meta">
                 <span><?= date('Y.m.d', strtotime($p['created_at'])) ?></span>
                 <span>조회 <?= (int)$p['view_count'] ?> · ♥ <?= (int)$p['like_count'] ?> · 💬 <?= (int)$p['comment_count'] ?></span>
@@ -294,6 +402,7 @@ require_once __DIR__ . '/../app/header.php';
     <?php endif; ?>
   </main>
 
+</div>
 </div>
 
 <?php require_once __DIR__ . '/../app/footer.php'; ?>

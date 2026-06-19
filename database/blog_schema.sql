@@ -35,6 +35,43 @@ CREATE TABLE `categories` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `blog_settings`
+--
+
+DROP TABLE IF EXISTS `blog_settings`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `blog_settings` (
+  `user_id` int(11) NOT NULL COMMENT '블로그 주인 회원 id',
+  `accent_color` char(7) NOT NULL DEFAULT '#d4af7a' COMMENT '대표 포인트 색상',
+  `background_color` char(7) NOT NULL DEFAULT '#ededed' COMMENT '블로그 배경색',
+  `background_image_original` varchar(255) DEFAULT NULL COMMENT '배경 이미지 원본 파일명',
+  `background_image_stored` varchar(255) DEFAULT NULL COMMENT '배경 이미지 저장 파일명',
+  `background_repeat` varchar(20) NOT NULL DEFAULT 'no-repeat' COMMENT '배경 반복 설정(no-repeat/repeat)',
+  `background_position` varchar(20) NOT NULL DEFAULT 'center' COMMENT '배경 위치',
+  `background_size` varchar(20) NOT NULL DEFAULT 'cover' COMMENT '배경 크기 설정(cover/contain/auto)',
+  `header_image_original` varchar(255) DEFAULT NULL COMMENT '헤더 배너 원본 파일명',
+  `header_image_stored` varchar(255) DEFAULT NULL COMMENT '헤더 배너 저장 파일명',
+  `header_height` int(11) NOT NULL DEFAULT 220 COMMENT '헤더 배너 높이(px)',
+  `layout_type` varchar(20) NOT NULL DEFAULT 'standard' COMMENT '레이아웃 프리셋(standard/wide/compact)',
+  `title_align` varchar(10) NOT NULL DEFAULT 'left' COMMENT '블로그 제목 정렬(left/center)',
+  `sidebar_position` varchar(10) NOT NULL DEFAULT 'left' COMMENT '사이드바 위치(left/right)',
+  `profile_shape` varchar(20) NOT NULL DEFAULT 'circle' COMMENT '프로필 이미지 모양(circle/rounded/square)',
+  `profile_card_color` char(7) NOT NULL DEFAULT '#ffffff' COMMENT '프로필 카드 배경색',
+  `post_list_style` varchar(20) NOT NULL DEFAULT 'card' COMMENT '글 목록 스타일(card/list)',
+  `thumbnail_style` varchar(20) NOT NULL DEFAULT 'wide' COMMENT '목록 썸네일 스타일(wide/square/hidden)',
+  `font_style` varchar(20) NOT NULL DEFAULT 'sans' COMMENT '폰트 프리셋(sans/serif/rounded)',
+  `show_intro` tinyint(1) NOT NULL DEFAULT 1 COMMENT '소개글 표시 여부',
+  `show_post_summary` tinyint(1) NOT NULL DEFAULT 1 COMMENT '글 요약 표시 여부',
+  `show_visit_count` tinyint(1) NOT NULL DEFAULT 1 COMMENT '방문자 수 표시 여부',
+  `created_at` datetime NOT NULL DEFAULT current_timestamp() COMMENT '생성 일시',
+  `updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp() COMMENT '수정 일시',
+  PRIMARY KEY (`user_id`),
+  CONSTRAINT `fk_blog_settings_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `comments`
 --
 
