@@ -233,3 +233,9 @@ host=localhost, username=user1, password=1234, database=blog
 - 닉네임 예시: stephane_music, yujin_dev, mina_daily, hoonie_cinema
 - ※ 샘플 데이터의 password 는 '$hash$' 더미라 로그인 안 됨.
   실제 테스트는 회원가입으로 새 계정 만들어서 할 것.
+## 작업 환경 메모
+
+- 이 프로젝트는 학교 컴퓨터와 집 컴퓨터에서 같은 GitHub 저장소를 pull/push 하며 번갈아 작업한다.
+- 한쪽 컴퓨터에서 작업을 시작하기 전에는 먼저 `git pull` 로 최신 내용을 받고, 작업이 끝나면 `git status` 로 변경 파일을 확인한 뒤 commit/push 한다.
+- 학교/집 환경 차이로 DB나 XAMPP 설정이 다를 수 있으므로, PHP 코드 자체에는 로컬 절대경로나 개인 PC 전용 설정을 넣지 않는다.
+- DB 접속 정보는 현재 수업용 공통 설정(`app/db.php`: localhost / user1 / 1234 / blog)을 기준으로 유지한다.
