@@ -52,6 +52,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute();
         $stmt->close();
 
+    } elseif ($action === 'reorder') {
+        $ids = array_filter(array_map('intval', explode(',', $_POST['order'] ?? '')));
+        if ($ids) {
+            $stmt = $conn->prepare("UPDATE categories SET sort_order = ? WHERE id = ? AND user_id = ?");
+            foreach ($ids as $i => $cid) {
+                $stmt->bind_param("iii", $i, $cid, $userId);
+                $stmt->execute();
+            }
+            $stmt->close();
+        }
+
     } elseif ($action === 'up' || $action === 'down') {
         $id = (int)($_POST['id'] ?? 0);
         // 현재 순서대로 id 목록을 받아 위/아래와 자리 교환 후 sort_order 재부여
@@ -108,9 +119,16 @@ require_once __DIR__ . '/../app/header.php';
   <?php if (!$cats): ?>
     <p class="empty">아직 카테고리가 없어요. 아래에서 추가해보세요.</p>
   <?php else: ?>
-    <ul class="cat-manage">
+    <form class="cat-manage__order" method="post" action="categories_manage.php" data-cat-order-form>
+      <input type="hidden" name="action" value="reorder">
+      <input type="hidden" name="order" data-cat-order>
+      <button type="submit" class="btn-primary" hidden data-cat-order-save>순서 저장</button>
+    </form>
+    <p class="cat-manage__hint">왼쪽 손잡이를 드래그해서 순서를 바꿀 수 있어요.</p>
+    <ul class="cat-manage" data-cat-list>
       <?php foreach ($cats as $i => $c): ?>
-        <li class="cat-manage__item">
+        <li class="cat-manage__item" draggable="true" data-cat-id="<?= (int)$c['id'] ?>">
+          <button type="button" class="cat-manage__drag" aria-label="순서 이동">☰</button>
           <form class="cat-manage__rename" method="post" action="categories_manage.php">
             <input type="hidden" name="action" value="rename">
             <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
@@ -130,7 +148,7 @@ require_once __DIR__ . '/../app/header.php';
               <button type="submit" <?= $i === count($cats) - 1 ? 'disabled' : '' ?>>▼</button>
             </form>
             <form method="post" action="categories_manage.php"
-                  onsubmit="return confirm('삭제하면 이 카테고리의 글은 미분류가 됩니다. 삭제할까요?');">
+                  data-confirm="삭제하면 이 카테고리의 글은 미분류가 됩니다. 삭제할까요?">
               <input type="hidden" name="action" value="delete">
               <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
               <button type="submit" class="cat-manage__del">삭제</button>
@@ -147,6 +165,47 @@ require_once __DIR__ . '/../app/header.php';
     <button type="submit" class="btn-primary">추가</button>
   </form>
 </section>
+
+<script>
+(function () {
+  var list = document.querySelector('[data-cat-list]');
+  var orderInput = document.querySelector('[data-cat-order]');
+  var saveBtn = document.querySelector('[data-cat-order-save]');
+  if (!list || !orderInput || !saveBtn) return;
+
+  var dragging = null;
+
+  function markChanged() {
+    orderInput.value = Array.prototype.map.call(list.querySelectorAll('[data-cat-id]'), function (item) {
+      return item.dataset.catId;
+    }).join(',');
+    saveBtn.hidden = false;
+  }
+
+  list.addEventListener('dragstart', function (e) {
+    dragging = e.target.closest('[data-cat-id]');
+    if (!dragging) return;
+    dragging.classList.add('is-dragging');
+    e.dataTransfer.effectAllowed = 'move';
+  });
+
+  list.addEventListener('dragover', function (e) {
+    if (!dragging) return;
+    e.preventDefault();
+    var target = e.target.closest('[data-cat-id]');
+    if (!target || target === dragging) return;
+    var rect = target.getBoundingClientRect();
+    var before = e.clientY < rect.top + rect.height / 2;
+    list.insertBefore(dragging, before ? target : target.nextSibling);
+  });
+
+  list.addEventListener('dragend', function () {
+    if (dragging) dragging.classList.remove('is-dragging');
+    dragging = null;
+    markChanged();
+  });
+})();
+</script>
 
 <?php require_once __DIR__ . '/../app/footer.php'; ?>
 

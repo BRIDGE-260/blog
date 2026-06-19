@@ -12,6 +12,7 @@
 -- Clear existing rows before loading samples.
 -- Use DELETE instead of TRUNCATE because TRUNCATE can fail on FK-referenced tables.
 DELETE FROM `guestbook`;
+DELETE FROM `notification_reads`;
 DELETE FROM `scraps`;
 DELETE FROM `post_images`;
 DELETE FROM `post_tags`;
@@ -25,6 +26,7 @@ DELETE FROM `categories`;
 DELETE FROM `users`;
 
 ALTER TABLE `guestbook` AUTO_INCREMENT=1;
+ALTER TABLE `notification_reads` AUTO_INCREMENT=1;
 ALTER TABLE `scraps` AUTO_INCREMENT=1;
 ALTER TABLE `post_images` AUTO_INCREMENT=1;
 ALTER TABLE `comments` AUTO_INCREMENT=1;

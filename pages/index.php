@@ -33,7 +33,7 @@ $stmt->execute();
 $neighborPosts = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
-// ── 인기글 (공개글 중 공감 많은 순 Top 5) ──
+// ── 인기글 (공개글 중 공감 많은 순 Top 6) ──
 $popularPosts = $conn->query(
     "SELECT p.id, p.title, p.view_count, u.nickname,
             (SELECT COUNT(*) FROM likes l WHERE l.post_id = p.id) AS like_count
@@ -41,7 +41,7 @@ $popularPosts = $conn->query(
      JOIN users u ON u.id = p.user_id
      WHERE p.status = 'published' AND p.visibility = 'all'
      ORDER BY like_count DESC, p.view_count DESC, p.created_at DESC
-     LIMIT 4"
+     LIMIT 6"
 )->fetch_all(MYSQLI_ASSOC);
 
 // ── ② 인기 태그 (공개글에 많이 쓰인 태그 Top 10) ──
@@ -65,24 +65,38 @@ if ($tagId > 0) {
     $types   .= 'i';
 }
 if ($q !== '') {
-    // 제목·내용 + 태그명까지 검색
+    // 제목·내용 + 작성자 닉네임/블로그 제목 + 카테고리 + 태그명까지 검색
     $where   .= " AND (p.title LIKE ? OR p.content LIKE ?
+                  OR u.nickname LIKE ? OR u.blog_title LIKE ?
+                  OR c.name LIKE ?
                   OR EXISTS(SELECT 1 FROM post_tags pt2 JOIN tags t2 ON t2.id = pt2.tag_id
-                            WHERE pt2.post_id = p.id AND t2.name LIKE ?))";
+                            WHERE pt2.post_id = p.id AND (t2.name LIKE ? OR t2.normalized_name LIKE ?)))";
     $like     = '%' . $q . '%';
-    $params[] = $like; $params[] = $like; $params[] = $like;
-    $types   .= 'sss';
+    $normalizedLike = '%' . mb_strtolower($q, 'UTF-8') . '%';
+    $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $like; $params[] = $normalizedLike;
+    $types   .= 'sssssss';
 }
 if ($cat !== '' && in_array($cat, $FIXED_CATEGORIES, true)) {
-    // 주제는 유저별 카테고리라 이름으로 매칭 (EXISTS 면 count/list 쿼리 둘 다에서 동작)
-    $where   .= " AND EXISTS(SELECT 1 FROM categories cc WHERE cc.id = p.category_id AND cc.name = ?)";
-    $params[] = $cat;
-    $types   .= 's';
+    // 주제는 유저별 카테고리라, 예전/샘플 세부 카테고리 이름까지 같은 탭에 묶어서 매칭한다.
+    $catNames = $CATEGORY_ALIASES[$cat] ?? [$cat];
+    $placeholders = implode(',', array_fill(0, count($catNames), '?'));
+    $where .= " AND EXISTS(SELECT 1 FROM categories cc WHERE cc.id = p.category_id AND cc.name IN ($placeholders))";
+    foreach ($catNames as $name) {
+        $params[] = $name;
+        $types .= 's';
+    }
 }
 $order = $sort === 'popular' ? "p.view_count DESC, p.created_at DESC" : "p.created_at DESC";
 
 // 개수 → 페이지 수
-$stmt = $conn->prepare("SELECT COUNT(*) AS cnt FROM posts p $join WHERE $where");
+$stmt = $conn->prepare(
+    "SELECT COUNT(*) AS cnt
+     FROM posts p
+     $join
+     JOIN users u ON u.id = p.user_id
+     LEFT JOIN categories c ON c.id = p.category_id
+     WHERE $where"
+);
 if ($types !== '') $stmt->bind_param($types, ...$params);
 $stmt->execute();
 $total = (int)$stmt->get_result()->fetch_assoc()['cnt'];
@@ -243,7 +257,7 @@ if (!$ajax) {
     <?php if ($tagId > 0): ?><input type="hidden" name="tag" value="<?= $tagId ?>"><?php endif; ?>
     <?php if ($sort !== 'latest'): ?><input type="hidden" name="sort" value="<?= $sort ?>"><?php endif; ?>
     <?php if ($cat !== ''): ?><input type="hidden" name="cat" value="<?= htmlspecialchars($cat) ?>"><?php endif; ?>
-    <input type="text" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="제목·내용 검색">
+    <input type="text" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="제목·내용·블로그 검색">
     <button type="submit">검색</button>
   </form>
 </section>

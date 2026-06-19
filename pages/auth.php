@@ -54,6 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // 가입과 동시에 로그인 처리
                 $_SESSION['user_id']  = $newId;
                 $_SESSION['nickname'] = $nickname;
+                $_SESSION['flash_toast'] = '회원가입이 완료됐어요. 이제 블로그를 시작해보세요!';
                 header('Location: index.php');
                 exit;
             }
@@ -78,6 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($user && password_verify($password, $user['password'])) {
                 $_SESSION['user_id']  = $user['id'];
                 $_SESSION['nickname'] = $user['nickname'];
+                $_SESSION['flash_toast'] = '다시 오신 걸 환영해요.';
                 header('Location: index.php');
                 exit;
             } else {

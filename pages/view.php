@@ -273,6 +273,10 @@ require_once __DIR__ . '/../app/header.php';
   <p class="empty">비공개 글이거나 볼 수 있는 권한이 없어요.</p>
 <?php else: ?>
 
+  <?php if (($_GET['from'] ?? '') === 'notifications'): ?>
+    <a class="back-link" href="notifications.php">← 소식으로 돌아가기</a>
+  <?php endif; ?>
+
   <article class="post post--nothumb">
     <?php if ($post['category_name']): ?>
       <span class="post__cat"><?= htmlspecialchars($post['category_name']) ?></span>
@@ -386,20 +390,11 @@ require_once __DIR__ . '/../app/header.php';
         <?php if ($canReply || $mine): ?>
           <div class="comment__actions">
             <?php if ($canReply): ?>
-              <details class="comment__reply">
-                <summary>답글</summary>
-                <form method="post" action="view.php?id=<?= (int)$postId ?>" data-ajax-action="comment">
-                  <input type="hidden" name="action" value="comment">
-                  <input type="hidden" name="post_id" value="<?= (int)$postId ?>">
-                  <input type="hidden" name="parent_id" value="<?= (int)$cm['id'] ?>">
-                  <textarea name="content" rows="2" placeholder="답글을 남겨보세요" required></textarea>
-                  <button type="submit" class="btn-primary">등록</button>
-                </form>
-              </details>
+              <button type="button" class="comment__reply-btn" data-reply-toggle>답글</button>
             <?php endif; ?>
             <?php if ($mine): ?>
               <button type="button" class="comment__edit-btn" data-edit-toggle>수정</button>
-              <form method="post" action="view.php?id=<?= (int)$postId ?>" class="comment__del" data-ajax-action="comment_delete">
+              <form method="post" action="view.php?id=<?= (int)$postId ?>" class="comment__del" data-ajax-action="comment_delete" data-confirm="댓글을 삭제할까요?">
                 <input type="hidden" name="action" value="comment_delete">
                 <input type="hidden" name="post_id" value="<?= (int)$postId ?>">
                 <input type="hidden" name="comment_id" value="<?= (int)$cm['id'] ?>">
@@ -407,6 +402,18 @@ require_once __DIR__ . '/../app/header.php';
               </form>
             <?php endif; ?>
           </div>
+        <?php endif; ?>
+        <?php if ($canReply): ?>
+          <form method="post" action="view.php?id=<?= (int)$postId ?>" class="comment__inline-reply" data-ajax-action="comment" data-reply-form hidden>
+            <input type="hidden" name="action" value="comment">
+            <input type="hidden" name="post_id" value="<?= (int)$postId ?>">
+            <input type="hidden" name="parent_id" value="<?= (int)$cm['id'] ?>">
+            <textarea name="content" rows="2" placeholder="답글을 남겨보세요" required></textarea>
+            <div class="comment__edit-actions">
+              <button type="button" class="btn-ghost-dark" data-reply-cancel>취소</button>
+              <button type="submit" class="btn-primary">등록</button>
+            </div>
+          </form>
         <?php endif; ?>
       </div>
       <?php
@@ -556,21 +563,6 @@ require_once __DIR__ . '/../app/header.php';
       }).join('');
     }
 
-    document.addEventListener('toggle', function (event) {
-      var panel = event.target;
-      if (!panel.open || !panel.matches('.comment__reply')) return;
-
-      var comment = panel.closest('[data-comment-id]');
-      if (!comment) return;
-
-      comment.querySelectorAll('.comment__reply[open]').forEach(function (other) {
-        if (other !== panel) other.open = false;
-      });
-
-      var textarea = panel.querySelector('textarea');
-      if (textarea) setTimeout(function () { textarea.focus(); }, 0);
-    }, true);
-
     function closeEditForm(comment) {
       var form = comment && comment.querySelector('[data-edit-form]');
       var body = comment && comment.querySelector('[data-comment-body]');
@@ -592,8 +584,7 @@ require_once __DIR__ . '/../app/header.php';
         closeEditForm(otherForm.closest('[data-comment-id]'));
       });
 
-      var reply = comment.querySelector('.comment__reply[open]');
-      if (reply) reply.open = false;
+      closeReplyForm(comment);
       body.hidden = true;
       form.hidden = false;
       btn.textContent = '수정중';
@@ -603,6 +594,33 @@ require_once __DIR__ . '/../app/header.php';
         textarea.focus();
         textarea.setSelectionRange(textarea.value.length, textarea.value.length);
       }
+    }
+
+    function closeReplyForm(comment) {
+      var form = comment && comment.querySelector('[data-reply-form]');
+      var btn = comment && comment.querySelector('[data-reply-toggle]');
+      if (!form || !btn) return;
+      form.hidden = true;
+      form.reset();
+      btn.textContent = '답글';
+      btn.classList.remove('on');
+    }
+
+    function openReplyForm(comment) {
+      var form = comment && comment.querySelector('[data-reply-form]');
+      var btn = comment && comment.querySelector('[data-reply-toggle]');
+      if (!form || !btn) return;
+
+      document.querySelectorAll('[data-reply-form]:not([hidden])').forEach(function (otherForm) {
+        closeReplyForm(otherForm.closest('[data-comment-id]'));
+      });
+
+      closeEditForm(comment);
+      form.hidden = false;
+      btn.textContent = '답글중';
+      btn.classList.add('on');
+      var textarea = form.querySelector('textarea');
+      if (textarea) setTimeout(function () { textarea.focus(); }, 0);
     }
 
     document.addEventListener('click', function (event) {
@@ -615,9 +633,31 @@ require_once __DIR__ . '/../app/header.php';
         return;
       }
 
+      var replyBtn = event.target.closest('[data-reply-toggle]');
+      if (replyBtn) {
+        var replyComment = replyBtn.closest('[data-comment-id]');
+        var replyForm = replyComment && replyComment.querySelector('[data-reply-form]');
+        if (replyForm && !replyForm.hidden) closeReplyForm(replyComment);
+        else openReplyForm(replyComment);
+        return;
+      }
+
       var cancelBtn = event.target.closest('[data-edit-cancel]');
       if (cancelBtn) {
         closeEditForm(cancelBtn.closest('[data-comment-id]'));
+        return;
+      }
+
+      var replyCancelBtn = event.target.closest('[data-reply-cancel]');
+      if (replyCancelBtn) {
+        closeReplyForm(replyCancelBtn.closest('[data-comment-id]'));
+        return;
+      }
+
+      if (!event.target.closest('.comment')) {
+        document.querySelectorAll('[data-reply-form]:not([hidden])').forEach(function (form) {
+          closeReplyForm(form.closest('[data-comment-id]'));
+        });
       }
     });
 
@@ -646,27 +686,30 @@ require_once __DIR__ . '/../app/header.php';
 
       if (!isReply && isLogin) {
         html += ''
-          + '<details class="comment__reply">'
-          + '<summary>답글</summary>'
-          + '<form method="post" action="view.php?id=' + postId + '" data-ajax-action="comment">'
-          + '<input type="hidden" name="action" value="comment">'
-          + '<input type="hidden" name="post_id" value="' + postId + '">'
-          + '<input type="hidden" name="parent_id" value="' + id + '">'
-          + '<textarea name="content" rows="2" placeholder="답글을 남겨보세요" required></textarea>'
-          + '<button type="submit" class="btn-primary">등록</button>'
-          + '</form>'
-          + '</details>';
+          + '<button type="button" class="comment__reply-btn" data-reply-toggle>답글</button>';
       }
 
       html += ''
         + '<button type="button" class="comment__edit-btn" data-edit-toggle>수정</button>'
-        + '<form method="post" action="view.php?id=' + postId + '" class="comment__del" data-ajax-action="comment_delete">'
+        + '<form method="post" action="view.php?id=' + postId + '" class="comment__del" data-ajax-action="comment_delete" data-confirm="댓글을 삭제할까요?">'
         + '<input type="hidden" name="action" value="comment_delete">'
         + '<input type="hidden" name="post_id" value="' + postId + '">'
         + '<input type="hidden" name="comment_id" value="' + id + '">'
         + '<button type="submit">삭제</button>'
         + '</form>'
         + '</div>'
+        + (!isReply && isLogin
+          ? '<form method="post" action="view.php?id=' + postId + '" class="comment__inline-reply" data-ajax-action="comment" data-reply-form hidden>'
+            + '<input type="hidden" name="action" value="comment">'
+            + '<input type="hidden" name="post_id" value="' + postId + '">'
+            + '<input type="hidden" name="parent_id" value="' + id + '">'
+            + '<textarea name="content" rows="2" placeholder="답글을 남겨보세요" required></textarea>'
+            + '<div class="comment__edit-actions">'
+            + '<button type="button" class="btn-ghost-dark" data-reply-cancel>취소</button>'
+            + '<button type="submit" class="btn-primary">등록</button>'
+            + '</div>'
+            + '</form>'
+          : '')
         + '</div>';
 
       return html;
@@ -715,20 +758,26 @@ require_once __DIR__ . '/../app/header.php';
       if (!form) return;
 
       event.preventDefault();
-      if (form.dataset.ajaxAction === 'comment_delete' && !confirm('댓글을 삭제할까요?')) return;
+      var confirmMessage = form.getAttribute('data-confirm');
+      var proceed = confirmMessage && window.confirmAction
+        ? window.confirmAction(confirmMessage)
+        : Promise.resolve(!confirmMessage || confirm(confirmMessage));
 
-      var data = new FormData(form);
-      if (!data.has('post_id')) data.append('post_id', postId);
-      setBusy(form, true);
-      showStatus('', false);
+      proceed.then(function (ok) {
+        if (!ok) return;
 
-      fetch(apiUrl, {
-        method: 'POST',
-        body: data,
-        credentials: 'same-origin',
-        headers: { 'X-Requested-With': 'fetch' }
-      })
-        .then(readJson)
+        var data = new FormData(form);
+        if (!data.has('post_id')) data.append('post_id', postId);
+        setBusy(form, true);
+        showStatus('', false);
+
+        fetch(apiUrl, {
+          method: 'POST',
+          body: data,
+          credentials: 'same-origin',
+          headers: { 'X-Requested-With': 'fetch' }
+        })
+          .then(readJson)
         .then(function (json) {
           if (form.dataset.ajaxAction === 'like') {
             var likeBtn = document.querySelector('[data-like-btn]');
@@ -743,8 +792,8 @@ require_once __DIR__ . '/../app/header.php';
             addComment(json.comment);
             updateCommentCount(json.comment_count);
             form.reset();
-            var details = form.closest('details');
-            if (details) details.open = false;
+            var replyComment = form.closest('[data-comment-id]');
+            if (replyComment) closeReplyForm(replyComment);
             showStatus('댓글이 등록됐어요.', false);
           } else if (form.dataset.ajaxAction === 'comment_edit') {
             var comment = form.closest('[data-comment-id]');
@@ -766,6 +815,7 @@ require_once __DIR__ . '/../app/header.php';
         .finally(function () {
           setBusy(form, false);
         });
+      });
     });
   })();
   </script>

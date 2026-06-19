@@ -12,8 +12,11 @@ header('Content-Type: text/plain; charset=utf-8');
 
 // ── 1) 전부 비우기 ─────────────────────
 $conn->query("SET FOREIGN_KEY_CHECKS=0");
-foreach (['post_images','post_tags','comments','likes','neighbors','visit_logs','posts','tags','categories','users'] as $t) {
-    $conn->query("TRUNCATE TABLE $t");
+foreach (['guestbook','scraps','post_images','post_tags','comments','likes','neighbors','visit_logs','posts','tags','categories','users'] as $t) {
+    $conn->query("DELETE FROM $t");
+}
+foreach (['guestbook','scraps','post_images','comments','likes','neighbors','visit_logs','posts','tags','categories','users'] as $t) {
+    $conn->query("ALTER TABLE $t AUTO_INCREMENT=1");
 }
 $conn->query("SET FOREIGN_KEY_CHECKS=1");
 
@@ -30,13 +33,14 @@ function addUser($conn, $email, $nick, $name, $title, $intro, $gender) {
     return $id;
 }
 function addTag($conn, $pid, $name) {
-    $stmt = $conn->prepare("SELECT id FROM tags WHERE name=?");
-    $stmt->bind_param("s", $name); $stmt->execute();
+    $normalized = mb_strtolower($name, 'UTF-8');
+    $stmt = $conn->prepare("SELECT id FROM tags WHERE normalized_name=?");
+    $stmt->bind_param("s", $normalized); $stmt->execute();
     $r = $stmt->get_result()->fetch_assoc(); $stmt->close();
     if ($r) { $tid = $r['id']; }
     else {
-        $stmt = $conn->prepare("INSERT INTO tags (name) VALUES (?)");
-        $stmt->bind_param("s", $name); $stmt->execute();
+        $stmt = $conn->prepare("INSERT INTO tags (name, normalized_name) VALUES (?, ?)");
+        $stmt->bind_param("ss", $name, $normalized); $stmt->execute();
         $tid = $conn->insert_id; $stmt->close();
     }
     $stmt = $conn->prepare("INSERT IGNORE INTO post_tags (post_id, tag_id) VALUES (?,?)");

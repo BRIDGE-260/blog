@@ -72,6 +72,10 @@ require_once __DIR__ . '/../app/header.php';
 ?>
 
 <section class="comments gb">
+  <?php if (($_GET['from'] ?? '') === 'notifications'): ?>
+    <a class="back-link" href="notifications.php">← 소식으로 돌아가기</a>
+  <?php endif; ?>
+
   <div class="gb__head">
     <h1><?= htmlspecialchars($owner['nickname']) ?>님의 방명록</h1>
     <a class="gb__back" href="blog.php?id=<?= (int)$ownerId ?>">← <?= htmlspecialchars($ownerName) ?></a>
@@ -103,7 +107,7 @@ require_once __DIR__ . '/../app/header.php';
         <p class="comment__body"><?= nl2br(htmlspecialchars($g['content'])) ?></p>
         <?php if ($g['user_id'] == $viewerId || $isOwner): ?>
           <div class="comment__actions">
-            <form method="post" action="guestbook.php?id=<?= (int)$ownerId ?>" class="comment__del">
+            <form method="post" action="guestbook.php?id=<?= (int)$ownerId ?>" class="comment__del" data-confirm="방명록을 삭제할까요?">
               <input type="hidden" name="action" value="delete">
               <input type="hidden" name="gid" value="<?= (int)$g['id'] ?>">
               <button type="submit">삭제</button>

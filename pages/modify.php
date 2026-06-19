@@ -281,6 +281,7 @@ require_once __DIR__ . '/../app/header.php';
 
     <label class="wf-field">
       <span>본문 이미지 (파일 선택 → 아래 미리보기를 본문으로 드래그 · 본문에서 빼면 저장 시 삭제됨)</span>
+      <small class="wf-hint">여러 장을 한 번에 고르려면 파일 선택 창에서 Ctrl 또는 Shift를 누른 채 선택하세요.</small>
       <input type="file" name="images[]" accept="image/*" multiple>
     </label>
     <div id="imgTray" class="imgtray"></div>
@@ -294,7 +295,7 @@ require_once __DIR__ . '/../app/header.php';
 </section>
 
 <script src="../assets/js/taginput.js?v=20260619c"></script>
-<script src="../assets/js/imageinsert.js?v=20260619c"></script>
+<script src="../assets/js/imageinsert.js?v=20260619d"></script>
 
 <?php require_once __DIR__ . '/../app/footer.php'; ?>
 

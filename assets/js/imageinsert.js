@@ -39,17 +39,22 @@
     return n && n.nodeType === 1 && n.classList.contains('editor-img');
   }
 
+  function isResizeUi(n) {
+    return n && n.nodeType === 1 && n.classList
+      && (n.classList.contains('img-resize-box') || n.classList.contains('img-resize-handle'));
+  }
+
   function nextMeaningful(n) {
-    while (n && n.nodeType === 1 && n.classList.contains('img-resize-handle')) n = n.nextSibling;
+    while (isResizeUi(n)) n = n.nextSibling;
     while (n && n.nodeType === 3 && n.nodeValue.trim() === '') n = n.nextSibling;
-    while (n && n.nodeType === 1 && n.classList.contains('img-resize-handle')) n = n.nextSibling;
+    while (isResizeUi(n)) n = n.nextSibling;
     return n;
   }
 
   function prevMeaningful(n) {
-    while (n && n.nodeType === 1 && n.classList.contains('img-resize-handle')) n = n.previousSibling;
+    while (isResizeUi(n)) n = n.previousSibling;
     while (n && n.nodeType === 3 && n.nodeValue.trim() === '') n = n.previousSibling;
-    while (n && n.nodeType === 1 && n.classList.contains('img-resize-handle')) n = n.previousSibling;
+    while (isResizeUi(n)) n = n.previousSibling;
     return n;
   }
 
@@ -276,7 +281,7 @@
         out += n.nodeValue;
       } else if (n.nodeType === 1) {              // 요소
         var tag = n.tagName.toLowerCase();
-        if (n.classList && n.classList.contains('img-resize-handle')) {
+        if (isResizeUi(n)) {
           return;
         }
         if (tag === 'img' && n.getAttribute('data-token')) {
@@ -302,7 +307,7 @@
     hidden.value = s;
     if (s === '') {
       e.preventDefault();
-      alert('내용을 입력해주세요.');
+      if (window.showToast) window.showToast('내용을 입력해주세요.', true);
       editor.focus();
     }
   });

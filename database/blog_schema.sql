@@ -120,6 +120,24 @@ CREATE TABLE `neighbors` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `notification_reads`
+--
+
+DROP TABLE IF EXISTS `notification_reads`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `notification_reads` (
+  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT '읽은 소식 고유 번호',
+  `user_id` int(11) NOT NULL COMMENT '소식을 읽은 회원',
+  `notification_key` varchar(80) NOT NULL COMMENT '소식 종류와 원본 id(comment:1 등)',
+  `read_at` datetime NOT NULL DEFAULT current_timestamp() COMMENT '읽은 일시',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_notification_reads_user_key` (`user_id`,`notification_key`),
+  CONSTRAINT `fk_notification_reads_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `post_images`
 --
 

@@ -26,6 +26,8 @@ require_once __DIR__ . '/db.php';
 $pageTitle = $pageTitle ?? 'MyBlog';
 // 로그인했으면 닉네임, 아니면 null
 $loginNickname = $_SESSION['nickname'] ?? null;
+$flashToast = $_SESSION['flash_toast'] ?? '';
+unset($_SESSION['flash_toast']);
 
 // 상단바 아바타용 — 로그인 유저의 프로필 이미지(없으면 null)
 $loginAvatar = null;
@@ -38,37 +40,42 @@ if (isset($_SESSION['user_id'])) {
     $stmt->close();
 
     $loginAvatar = $loginUser['profile_image_stored'] ?? null;
-    $readAt = $loginUser['notifications_read_at'] ?? '1970-01-01 00:00:00';
 
     $stmt = $conn->prepare(
-        "SELECT
-            (
-              SELECT COUNT(*)
-              FROM comments cm
-              JOIN posts p ON p.id = cm.post_id
-              WHERE p.user_id = ? AND cm.user_id <> ? AND cm.created_at > ?
-            ) +
-            (
-              SELECT COUNT(*)
-              FROM likes l
-              JOIN posts p ON p.id = l.post_id
-              WHERE p.user_id = ? AND l.user_id <> ? AND l.created_at > ?
-            ) +
-            (
-              SELECT COUNT(*)
-              FROM posts p
-              JOIN neighbors n ON n.neighbor_id = p.user_id AND n.user_id = ?
-              WHERE p.status = 'published'
-                AND p.visibility IN ('all', 'neighbor')
-                AND p.user_id <> ?
-                AND p.created_at > ?
-            ) AS cnt"
+        "SELECT COUNT(*) AS cnt
+         FROM (
+            SELECT CONCAT('comment:', cm.id) AS nkey
+            FROM comments cm
+            JOIN posts p ON p.id = cm.post_id
+            WHERE p.user_id = ? AND cm.user_id <> ?
+            UNION ALL
+            SELECT CONCAT('like:', l.id) AS nkey
+            FROM likes l
+            JOIN posts p ON p.id = l.post_id
+            WHERE p.user_id = ? AND l.user_id <> ?
+            UNION ALL
+            SELECT CONCAT('neighbor_post:', p.id) AS nkey
+            FROM posts p
+            JOIN neighbors n ON n.neighbor_id = p.user_id AND n.user_id = ?
+            WHERE p.status = 'published'
+              AND p.visibility IN ('all', 'neighbor')
+              AND p.user_id <> ?
+            UNION ALL
+            SELECT CONCAT('guestbook:', g.id) AS nkey
+            FROM guestbook g
+            WHERE g.owner_id = ? AND g.user_id <> ?
+         ) n
+         LEFT JOIN notification_reads nr
+           ON nr.user_id = ? AND nr.notification_key = n.nkey
+         WHERE nr.id IS NULL"
     );
     $stmt->bind_param(
-        "iisiisiis",
-        $_SESSION['user_id'], $_SESSION['user_id'], $readAt,
-        $_SESSION['user_id'], $_SESSION['user_id'], $readAt,
-        $_SESSION['user_id'], $_SESSION['user_id'], $readAt
+        "iiiiiiiii",
+        $_SESSION['user_id'], $_SESSION['user_id'],
+        $_SESSION['user_id'], $_SESSION['user_id'],
+        $_SESSION['user_id'], $_SESSION['user_id'],
+        $_SESSION['user_id'], $_SESSION['user_id'],
+        $_SESSION['user_id']
     );
     $stmt->execute();
     $unreadNotifications = (int)($stmt->get_result()->fetch_assoc()['cnt'] ?? 0);
@@ -81,9 +88,9 @@ if (isset($_SESSION['user_id'])) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title><?= htmlspecialchars($pageTitle) ?></title>
-<link rel="stylesheet" href="../assets/css/style.css?v=20260619">
+<link rel="stylesheet" href="../assets/css/style.css?v=20260619f">
 </head>
-<body>
+<body <?= $flashToast !== '' ? 'data-flash-toast="' . htmlspecialchars($flashToast, ENT_QUOTES) . '"' : '' ?>>
 
 <header class="topbar">
   <a class="topbar__brand" href="index.php">My<span>Blog</span></a>

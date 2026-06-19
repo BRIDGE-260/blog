@@ -35,7 +35,7 @@ host=localhost, username=user1, password=1234, database=blog
 - 요청하지 않은 기능/파일을 임의로 추가하지 말 것.
 - 결정이 갈리는 지점은 먼저 묻고 진행. "왜 그렇게 하는지" 이유 설명을 선호.
 
-## 데이터베이스 구조 (12개 테이블)
+## 데이터베이스 구조 (13개 테이블)
 
 `database/blog_schema.sql` 로 생성, `database/blog_sample_data.sql` 로 샘플 데이터.
 실행 순서: schema → sample_data (ALTER 불필요, schema에 전부 반영됨).
@@ -62,6 +62,8 @@ host=localhost, username=user1, password=1234, database=blog
     스크랩/북마크. likes 와 똑같은 구조. view 에서 토글, scraps.php 에서 모아보기.
 12. **guestbook** — id, owner_id(FK 블로그주인), user_id(FK 글쓴이), content, created_at
     방명록(블로그 자체에 남기는 글). guestbook.php?id=주인id. 삭제는 글쓴이 또는 블로그주인.
+13. **notification_reads** — id, user_id(FK), notification_key, read_at, UNIQUE(user_id,notification_key)
+    내 소식 항목별 읽음 처리. key 예: `comment:3`, `like:7`, `neighbor_post:12`, `guestbook:2`.
 
 ### 이미지 파일 처리 규칙
 
@@ -82,7 +84,8 @@ host=localhost, username=user1, password=1234, database=blog
   그 자리에 실제 `<img class="editor-img" data-token="newK">` 가 박히고, 미리보기는 트레이에서 사라짐(잘라내기).
 - 드래그 안 한 사진은 글에 안 들어감. 폼 제출 시 JS 가 본문을 직렬화 → 텍스트는 그대로,
   이미지는 `[[img:newK]]` 또는 크기 지정 시 `[[img:newK|너비%]]` 토큰으로 hidden `name=content` 에 담음.
-- 이미지 클릭 → 크기조절 바(#imgResize, 슬라이더 15~100%)로 너비% 조절 / 삭제. 기본 50%.
+- 이미지 클릭 → 이미지 네 꼭짓점 핸들로 너비 조절 / Delete 또는 Backspace 로 삭제. 기본 30%.
+- 파일 선택 input 은 multiple 이며, 여러 장은 파일 선택 창에서 Ctrl 또는 Shift 로 선택한다.
 - 서버(write.php): content 안의 `[[img:newK...]]` 에 해당하는 파일만 업로드(등장 순서대로 sort_order),
   `new{K}` 부분만 실제 id 로 치환(|너비 보존). (첫 이미지 = 썸네일)
 - view.php `renderContent()`: `[[img:id]]`/`[[img:id|W]]` 를 `<img class="post__inline-img" style="width:W%">` 로,
@@ -92,7 +95,7 @@ host=localhost, username=user1, password=1234, database=blog
 
 ### 태그 처리 규칙
 
-- tags.name 에 UNIQUE → 같은 태그 중복 저장 방지 (재사용).
+- tags.name 과 tags.normalized_name 사용. 화면 표시 이름은 달라도 `#jpop`, `#JPOP`, `#Jpop` 은 normalized_name 기준 같은 태그로 묶는다.
 - 글쓰기에서 태그는 "#JPOP #시티팝" 한 줄 문자열로 입력받음.
 - PHP에서 파싱: 공백으로 분리 → 각 태그마다 "있으면 그 id, 없으면 INSERT" →
   tag_id 를 post_tags 에 연결.
@@ -145,20 +148,23 @@ host=localhost, username=user1, password=1234, database=blog
 - `pages/neighbors.php` — 이웃 + 블로그 찾기(탭 통합): `내 이웃`(서로이웃/취소·나를 추가한 사람) /
   `블로그 찾기`(tab=find: 전체 사용자 + 검색(닉네임·제목) + 정렬(글많은/최신가입/이름) + 이웃추가)
 - `pages/bloggers.php` — 이제 `neighbors.php?tab=find` 로 리다이렉트만 (찾기 화면은 neighbors.php 가 담당)
-- `pages/notifications.php` — 내 소식: 내 글의 최근 댓글+공감+이웃 새 글 타임라인. 상단 "소식" 안읽음 뱃지는 `users.notifications_read_at` 기준.
+- `pages/notifications.php` — 내 소식: 내 글 댓글+공감+이웃 새 글+방명록 타임라인.
+  `notification_reads` 기준으로 읽음/안 읽음 표시, 항목 클릭 시 개별 읽음 처리. 소식에서 들어간 글/방명록에는 "소식으로 돌아가기" 링크 표시.
 - `app/categories.php` — 고정 카테고리(주제) 목록 + 글쓰기에서 유저 카테고리로 매핑하는 헬퍼(ensureCategory)
-- `pages/categories_manage.php` — 내 카테고리 직접 관리(추가/이름변경/순서변경↑↓/삭제). blog.php 사이드바 "관리" 링크.
+- `pages/categories_manage.php` — 내 카테고리 직접 관리(추가/이름변경/순서변경↑↓/드래그앤드롭/삭제). blog.php 사이드바 "관리" 링크.
   ※ 글쓰기는 여전히 고정 주제 목록을 쓰므로, 이름 바꾼 카테고리를 글쓰기에서 같은 주제로 다시 고르면 새로 생길 수 있음.
 - `pages/scraps.php` — 내가 스크랩한 글 모아보기(liked.php 와 동일 구조). blog.php 사이드바 "스크랩" 링크.
-- `pages/guestbook.php` — 방명록: 누구나 열람, 로그인 시 작성, 삭제는 글쓴이/블로그주인. blog.php 사이드바 "방명록" 링크.
+- `pages/guestbook.php` — 방명록: 누구나 열람, 로그인 시 작성(단, 본인 방명록에는 직접 작성하지 않음), 삭제는 글쓴이/블로그주인. blog.php 사이드바 "방명록" 링크.
 - `pages/profile.php` — 프로필 수정(닉네임[UNIQUE 중복체크·수정시 세션도 갱신]/블로그제목/소개/성별/프로필이미지).
   이름(name 실명)은 표시만 하고 수정 불가. 비밀번호 변경·회원 탈퇴 진입
 - `pages/password.php` — 비밀번호 변경: 현재 비번 확인(password_verify) → 새 비번 저장(password_hash)
 - `pages/withdraw.php` — 회원 탈퇴: 비번 확인 후 DELETE FROM users(자식 FK CASCADE) + 업로드 파일 unlink + 세션 종료
 - `pages/logout.php` — 로그아웃
 - `api/api.php` — 공감/스크랩/댓글 작성·수정·삭제 AJAX JSON 엔드포인트. `view.php`의 no-JS POST 폴백은 유지.
+- `api/notification_read.php` — 소식 항목 클릭 시 개별 읽음 처리 JSON 엔드포인트.
+- `app/footer.php` — 공통 토스트(`showToast`)와 공통 확인 모달(`confirmAction`) 포함. 회원가입/로그인 성공 토스트, 삭제 확인 모달에서 사용.
 - `.htaccess` — 예전 루트 PHP URL을 새 `pages/` / `api/` 경로로 연결.
-- ※ DB 12개 테이블 전부 사용 중. 이미지 업로드 폴더는 `uploads/`(자동 생성).
+- ※ DB 13개 테이블 전부 사용 중. 이미지 업로드 폴더는 `uploads/`(자동 생성).
 
 ## 다음 할 일 (후보)
 
@@ -173,12 +179,15 @@ host=localhost, username=user1, password=1234, database=blog
 ### 기능 아이디어 목록 (후보)
 
 새 후보(미구현):
-- 공지글 상단 고정 — posts 에 is_pinned 컬럼, 내 블로그에서 맨 위 고정. (소)
 - 댓글 좋아요 — 댓글에도 공감. 새 테이블 또는 likes 확장. (중)
 - 다크 모드 — 컴퓨터용 사이트라 우선순위 낮음. :root 변수 토글 + localStorage. (소~중)
 
 완료:
-- ✅ 소식 안읽음 표시 — `users.notifications_read_at` 기준으로 상단 "소식"에 안 읽은 댓글/공감/이웃 새 글 개수 뱃지 표시. notifications.php 열람 시 읽음 처리.
+- ✅ 공지글 상단 고정 — posts.is_pinned 컬럼, 내 블로그 글 목록 상단 고정 + 공지 배지.
+- ✅ 소식 안읽음 표시 — `notification_reads` 기준으로 항목별 읽음/안 읽음 표시. 클릭한 항목만 읽음 처리되며 상단 "소식" 뱃지 숫자가 줄어듦.
+- ✅ 회원가입/로그인 성공 토스트 — 상단 중앙 토스트.
+- ✅ 삭제 확인 UX 통일 — 댓글/방명록/카테고리 삭제는 공통 확인 모달 사용.
+- ✅ 카테고리 드래그 순서 변경 — categories_manage.php 에서 드래그 후 순서 저장.
 - ✅ 이웃 새 글 알림 — 내 소식 타임라인에 내가 추가한 이웃의 최신 발행 글을 댓글/공감과 함께 표시.
 - ✅ 공감/스크랩/댓글 AJAX — `api/api.php` + `pages/view.php` fetch 연결. 댓글 수정은 본문 위치 인라인 편집, no-JS 폴백 유지.
 - ✅ 디렉토리 정리 — `app/`, `pages/`, `api/`, `assets/`, `database/`, `tools/` 구조. 루트 URL 호환은 `.htaccess` 처리.
