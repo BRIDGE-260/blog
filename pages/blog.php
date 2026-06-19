@@ -76,6 +76,20 @@ function blogColor($value, $fallback) {
 function blogChoice($value, $allowed, $fallback) {
     return in_array($value, $allowed, true) ? $value : $fallback;
 }
+function blogContrastColor($hex, $dark = '#2d3436', $light = '#ffffff') {
+    $hex = ltrim((string)$hex, '#');
+    if (strlen($hex) !== 6) return $dark;
+
+    $r = hexdec(substr($hex, 0, 2));
+    $g = hexdec(substr($hex, 2, 2));
+    $b = hexdec(substr($hex, 4, 2));
+    $brightness = (($r * 299) + ($g * 587) + ($b * 114)) / 1000;
+
+    return $brightness >= 150 ? $dark : $light;
+}
+function blogMutedColor($textColor) {
+    return $textColor === '#ffffff' ? 'rgba(255,255,255,0.72)' : '#7f878d';
+}
 
 $blogSettings['accent_color'] = blogColor($blogSettings['accent_color'], '#d4af7a');
 $blogSettings['background_color'] = blogColor($blogSettings['background_color'], '#f5f6f8');
@@ -95,6 +109,9 @@ $blogSettings['header_height'] = min(360, max(120, (int)$blogSettings['header_he
 $blogStyle = '--blog-accent:' . $blogSettings['accent_color'] . ';'
     . '--blog-bg:' . $blogSettings['background_color'] . ';'
     . '--blog-profile-bg:' . $blogSettings['profile_card_color'] . ';'
+    . '--blog-page-text:' . blogContrastColor($blogSettings['background_color']) . ';'
+    . '--blog-profile-text:' . blogContrastColor($blogSettings['profile_card_color']) . ';'
+    . '--blog-profile-muted:' . blogMutedColor(blogContrastColor($blogSettings['profile_card_color'])) . ';'
     . '--blog-header-height:' . (int)$blogSettings['header_height'] . 'px;';
 $blogClasses = [
     'blog-shell',

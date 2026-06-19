@@ -170,11 +170,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $pageTitle = '블로그 꾸미기 · MyBlog';
+$pageClass = 'page--wide';
 require_once __DIR__ . '/../app/header.php';
 ?>
 
 <section class="setting customize">
-  <h1>블로그 꾸미기</h1>
+  <div class="customize-hero">
+    <div>
+      <p class="customize-eyebrow">My Blog Design</p>
+      <h1>블로그 꾸미기</h1>
+      <p>자주 쓰는 조합은 한 번에 고르고, 세부 설정은 아래에서 조금씩 다듬을 수 있어요.</p>
+    </div>
+    <a class="btn-ghost-dark" href="blog.php?id=<?= $userId ?>">내 블로그 보기</a>
+  </div>
 
   <?php if ($saved): ?>
     <div class="form-ok">블로그 디자인을 저장했어요.</div>
@@ -183,143 +191,242 @@ require_once __DIR__ . '/../app/header.php';
     <div class="form-error"><?= htmlspecialchars($error) ?></div>
   <?php endif; ?>
 
-  <form class="write-form customize-form" method="post" action="blog_customize.php" enctype="multipart/form-data">
-    <div class="customize-grid">
-      <label class="wf-field">
-        <span>포인트 색상</span>
-        <input type="color" name="accent_color" value="<?= htmlspecialchars($settings['accent_color']) ?>">
-      </label>
-      <label class="wf-field">
-        <span>배경색</span>
-        <input type="color" name="background_color" value="<?= htmlspecialchars($settings['background_color']) ?>">
-      </label>
-      <label class="wf-field">
-        <span>프로필 카드색</span>
-        <input type="color" name="profile_card_color" value="<?= htmlspecialchars($settings['profile_card_color']) ?>">
-      </label>
+  <div class="customize-presets" aria-label="빠른 테마">
+    <button type="button" data-preset='{"accent_color":"#d4af7a","background_color":"#f5f6f8","profile_card_color":"#ffffff","layout_type":"standard","post_list_style":"card","thumbnail_style":"wide","font_style":"sans"}'>
+      <span style="background:#d4af7a"></span> 기본
+    </button>
+    <button type="button" data-preset='{"accent_color":"#8b5e34","background_color":"#f3eee7","profile_card_color":"#fffaf2","layout_type":"compact","post_list_style":"card","thumbnail_style":"square","font_style":"serif"}'>
+      <span style="background:#8b5e34"></span> 감성
+    </button>
+    <button type="button" data-preset='{"accent_color":"#4f8fbd","background_color":"#edf4fb","profile_card_color":"#ffffff","layout_type":"wide","post_list_style":"list","thumbnail_style":"wide","font_style":"sans"}'>
+      <span style="background:#4f8fbd"></span> 깔끔
+    </button>
+    <button type="button" data-preset='{"accent_color":"#7aa87a","background_color":"#eef5ed","profile_card_color":"#ffffff","layout_type":"standard","post_list_style":"card","thumbnail_style":"wide","font_style":"rounded"}'>
+      <span style="background:#7aa87a"></span> 산뜻
+    </button>
+    <button type="button" data-preset='{"accent_color":"#b87486","background_color":"#f8f1f3","profile_card_color":"#fffafa","layout_type":"compact","post_list_style":"card","thumbnail_style":"square","font_style":"rounded"}'>
+      <span style="background:#b87486"></span> 부드러운
+    </button>
+  </div>
+
+  <form class="write-form customize-form" method="post" action="blog_customize.php" enctype="multipart/form-data" data-customize-form>
+    <div class="customize-layout">
+      <aside class="customize-live" data-customize-preview>
+        <div class="customize-live__cover">내 블로그</div>
+        <div class="customize-live__body">
+          <div class="customize-live__profile">
+            <span>n</span>
+            <strong>name님의 블로그</strong>
+            <em>오늘의 기록을 남기는 공간</em>
+          </div>
+          <div class="customize-live__post">
+            <b></b>
+            <strong>첫 번째 글 제목</strong>
+            <p>글 요약이 여기에 표시됩니다.</p>
+          </div>
+        </div>
+      </aside>
+
+      <div class="customize-panels">
+        <section class="customize-panel">
+          <h2>색상</h2>
+          <div class="customize-grid">
+            <label class="wf-field">
+              <span>포인트 색상</span>
+              <input type="color" name="accent_color" value="<?= htmlspecialchars($settings['accent_color']) ?>">
+            </label>
+            <label class="wf-field">
+              <span>배경색</span>
+              <input type="color" name="background_color" value="<?= htmlspecialchars($settings['background_color']) ?>">
+            </label>
+            <label class="wf-field">
+              <span>프로필 카드색</span>
+              <input type="color" name="profile_card_color" value="<?= htmlspecialchars($settings['profile_card_color']) ?>">
+            </label>
+          </div>
+        </section>
+
+        <section class="customize-panel">
+          <h2>이미지</h2>
+          <div class="customize-upload-grid">
+            <div class="wf-field">
+              <span>헤더 배너 이미지</span>
+              <?php if (!empty($settings['header_image_stored'])): ?>
+                <img class="customize-preview customize-preview--wide" src="../uploads/<?= htmlspecialchars($settings['header_image_stored']) ?>" alt="">
+                <label class="wf-checkfield"><input type="checkbox" name="remove_header_image" value="1"><span>현재 헤더 이미지 제거</span></label>
+              <?php endif; ?>
+              <input type="file" name="header_image" accept="image/*">
+            </div>
+
+            <div class="wf-field">
+              <span>배경 이미지</span>
+              <?php if (!empty($settings['background_image_stored'])): ?>
+                <img class="customize-preview" src="../uploads/<?= htmlspecialchars($settings['background_image_stored']) ?>" alt="">
+                <label class="wf-checkfield"><input type="checkbox" name="remove_background_image" value="1"><span>현재 배경 이미지 제거</span></label>
+              <?php endif; ?>
+              <input type="file" name="background_image" accept="image/*">
+            </div>
+          </div>
+
+          <div class="wf-row">
+            <label>
+              <span>배경 반복</span>
+              <select name="background_repeat">
+                <option value="no-repeat" <?= $settings['background_repeat'] === 'no-repeat' ? 'selected' : '' ?>>반복 없음</option>
+                <option value="repeat" <?= $settings['background_repeat'] === 'repeat' ? 'selected' : '' ?>>반복</option>
+              </select>
+            </label>
+            <label>
+              <span>배경 위치</span>
+              <select name="background_position">
+                <option value="left" <?= $settings['background_position'] === 'left' ? 'selected' : '' ?>>왼쪽</option>
+                <option value="center" <?= $settings['background_position'] === 'center' ? 'selected' : '' ?>>가운데</option>
+                <option value="right" <?= $settings['background_position'] === 'right' ? 'selected' : '' ?>>오른쪽</option>
+              </select>
+            </label>
+            <label>
+              <span>배경 크기</span>
+              <select name="background_size">
+                <option value="cover" <?= $settings['background_size'] === 'cover' ? 'selected' : '' ?>>채우기</option>
+                <option value="contain" <?= $settings['background_size'] === 'contain' ? 'selected' : '' ?>>전체 보이기</option>
+                <option value="auto" <?= $settings['background_size'] === 'auto' ? 'selected' : '' ?>>원본 크기</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="customize-panel">
+          <h2>레이아웃</h2>
+          <div class="wf-row">
+            <label>
+              <span>레이아웃</span>
+              <select name="layout_type">
+                <option value="standard" <?= $settings['layout_type'] === 'standard' ? 'selected' : '' ?>>기본형</option>
+                <option value="wide" <?= $settings['layout_type'] === 'wide' ? 'selected' : '' ?>>넓은형</option>
+                <option value="compact" <?= $settings['layout_type'] === 'compact' ? 'selected' : '' ?>>미니형</option>
+              </select>
+            </label>
+            <label>
+              <span>사이드바 위치</span>
+              <select name="sidebar_position">
+                <option value="left" <?= $settings['sidebar_position'] === 'left' ? 'selected' : '' ?>>왼쪽</option>
+                <option value="right" <?= $settings['sidebar_position'] === 'right' ? 'selected' : '' ?>>오른쪽</option>
+              </select>
+            </label>
+            <label>
+              <span>제목 정렬</span>
+              <select name="title_align">
+                <option value="left" <?= $settings['title_align'] === 'left' ? 'selected' : '' ?>>왼쪽</option>
+                <option value="center" <?= $settings['title_align'] === 'center' ? 'selected' : '' ?>>가운데</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="wf-row">
+            <label>
+              <span>프로필 이미지 모양</span>
+              <select name="profile_shape">
+                <option value="circle" <?= $settings['profile_shape'] === 'circle' ? 'selected' : '' ?>>원형</option>
+                <option value="rounded" <?= $settings['profile_shape'] === 'rounded' ? 'selected' : '' ?>>둥근 사각형</option>
+                <option value="square" <?= $settings['profile_shape'] === 'square' ? 'selected' : '' ?>>사각형</option>
+              </select>
+            </label>
+            <label>
+              <span>글 목록</span>
+              <select name="post_list_style">
+                <option value="card" <?= $settings['post_list_style'] === 'card' ? 'selected' : '' ?>>카드형</option>
+                <option value="list" <?= $settings['post_list_style'] === 'list' ? 'selected' : '' ?>>리스트형</option>
+              </select>
+            </label>
+            <label>
+              <span>썸네일</span>
+              <select name="thumbnail_style">
+                <option value="wide" <?= $settings['thumbnail_style'] === 'wide' ? 'selected' : '' ?>>가로형</option>
+                <option value="square" <?= $settings['thumbnail_style'] === 'square' ? 'selected' : '' ?>>정사각형</option>
+                <option value="hidden" <?= $settings['thumbnail_style'] === 'hidden' ? 'selected' : '' ?>>숨김</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="wf-row">
+            <label>
+              <span>폰트</span>
+              <select name="font_style">
+                <option value="sans" <?= $settings['font_style'] === 'sans' ? 'selected' : '' ?>>기본 고딕</option>
+                <option value="serif" <?= $settings['font_style'] === 'serif' ? 'selected' : '' ?>>명조</option>
+                <option value="rounded" <?= $settings['font_style'] === 'rounded' ? 'selected' : '' ?>>둥근 고딕</option>
+              </select>
+            </label>
+            <label>
+              <span>헤더 높이(px)</span>
+              <input type="number" name="header_height" min="120" max="360" value="<?= (int)$settings['header_height'] ?>">
+            </label>
+          </div>
+        </section>
+
+        <section class="customize-panel">
+          <h2>표시 옵션</h2>
+          <div class="customize-checks">
+            <label class="wf-checkfield"><input type="checkbox" name="show_intro" value="1" <?= (int)$settings['show_intro'] === 1 ? 'checked' : '' ?>><span>소개글 표시</span></label>
+            <label class="wf-checkfield"><input type="checkbox" name="show_post_summary" value="1" <?= (int)$settings['show_post_summary'] === 1 ? 'checked' : '' ?>><span>글 요약 표시</span></label>
+            <label class="wf-checkfield"><input type="checkbox" name="show_visit_count" value="1" <?= (int)$settings['show_visit_count'] === 1 ? 'checked' : '' ?>><span>방문자 수 표시</span></label>
+          </div>
+        </section>
+      </div>
     </div>
 
-    <div class="wf-field">
-      <span>헤더 배너 이미지</span>
-      <?php if (!empty($settings['header_image_stored'])): ?>
-        <img class="customize-preview customize-preview--wide" src="../uploads/<?= htmlspecialchars($settings['header_image_stored']) ?>" alt="">
-        <label class="wf-checkfield"><input type="checkbox" name="remove_header_image" value="1"><span>현재 헤더 이미지 제거</span></label>
-      <?php endif; ?>
-      <input type="file" name="header_image" accept="image/*">
-    </div>
-
-    <div class="wf-field">
-      <span>배경 이미지</span>
-      <?php if (!empty($settings['background_image_stored'])): ?>
-        <img class="customize-preview" src="../uploads/<?= htmlspecialchars($settings['background_image_stored']) ?>" alt="">
-        <label class="wf-checkfield"><input type="checkbox" name="remove_background_image" value="1"><span>현재 배경 이미지 제거</span></label>
-      <?php endif; ?>
-      <input type="file" name="background_image" accept="image/*">
-    </div>
-
-    <div class="wf-row">
-      <label>
-        <span>배경 반복</span>
-        <select name="background_repeat">
-          <option value="no-repeat" <?= $settings['background_repeat'] === 'no-repeat' ? 'selected' : '' ?>>반복 없음</option>
-          <option value="repeat" <?= $settings['background_repeat'] === 'repeat' ? 'selected' : '' ?>>반복</option>
-        </select>
-      </label>
-      <label>
-        <span>배경 위치</span>
-        <select name="background_position">
-          <option value="left" <?= $settings['background_position'] === 'left' ? 'selected' : '' ?>>왼쪽</option>
-          <option value="center" <?= $settings['background_position'] === 'center' ? 'selected' : '' ?>>가운데</option>
-          <option value="right" <?= $settings['background_position'] === 'right' ? 'selected' : '' ?>>오른쪽</option>
-        </select>
-      </label>
-      <label>
-        <span>배경 크기</span>
-        <select name="background_size">
-          <option value="cover" <?= $settings['background_size'] === 'cover' ? 'selected' : '' ?>>채우기</option>
-          <option value="contain" <?= $settings['background_size'] === 'contain' ? 'selected' : '' ?>>전체 보이기</option>
-          <option value="auto" <?= $settings['background_size'] === 'auto' ? 'selected' : '' ?>>원본 크기</option>
-        </select>
-      </label>
-    </div>
-
-    <div class="wf-row">
-      <label>
-        <span>레이아웃</span>
-        <select name="layout_type">
-          <option value="standard" <?= $settings['layout_type'] === 'standard' ? 'selected' : '' ?>>기본형</option>
-          <option value="wide" <?= $settings['layout_type'] === 'wide' ? 'selected' : '' ?>>넓은형</option>
-          <option value="compact" <?= $settings['layout_type'] === 'compact' ? 'selected' : '' ?>>미니형</option>
-        </select>
-      </label>
-      <label>
-        <span>사이드바 위치</span>
-        <select name="sidebar_position">
-          <option value="left" <?= $settings['sidebar_position'] === 'left' ? 'selected' : '' ?>>왼쪽</option>
-          <option value="right" <?= $settings['sidebar_position'] === 'right' ? 'selected' : '' ?>>오른쪽</option>
-        </select>
-      </label>
-      <label>
-        <span>제목 정렬</span>
-        <select name="title_align">
-          <option value="left" <?= $settings['title_align'] === 'left' ? 'selected' : '' ?>>왼쪽</option>
-          <option value="center" <?= $settings['title_align'] === 'center' ? 'selected' : '' ?>>가운데</option>
-        </select>
-      </label>
-    </div>
-
-    <div class="wf-row">
-      <label>
-        <span>프로필 이미지 모양</span>
-        <select name="profile_shape">
-          <option value="circle" <?= $settings['profile_shape'] === 'circle' ? 'selected' : '' ?>>원형</option>
-          <option value="rounded" <?= $settings['profile_shape'] === 'rounded' ? 'selected' : '' ?>>둥근 사각형</option>
-          <option value="square" <?= $settings['profile_shape'] === 'square' ? 'selected' : '' ?>>사각형</option>
-        </select>
-      </label>
-      <label>
-        <span>글 목록</span>
-        <select name="post_list_style">
-          <option value="card" <?= $settings['post_list_style'] === 'card' ? 'selected' : '' ?>>카드형</option>
-          <option value="list" <?= $settings['post_list_style'] === 'list' ? 'selected' : '' ?>>리스트형</option>
-        </select>
-      </label>
-      <label>
-        <span>썸네일</span>
-        <select name="thumbnail_style">
-          <option value="wide" <?= $settings['thumbnail_style'] === 'wide' ? 'selected' : '' ?>>가로형</option>
-          <option value="square" <?= $settings['thumbnail_style'] === 'square' ? 'selected' : '' ?>>정사각형</option>
-          <option value="hidden" <?= $settings['thumbnail_style'] === 'hidden' ? 'selected' : '' ?>>숨김</option>
-        </select>
-      </label>
-    </div>
-
-    <div class="wf-row">
-      <label>
-        <span>폰트</span>
-        <select name="font_style">
-          <option value="sans" <?= $settings['font_style'] === 'sans' ? 'selected' : '' ?>>기본 고딕</option>
-          <option value="serif" <?= $settings['font_style'] === 'serif' ? 'selected' : '' ?>>명조</option>
-          <option value="rounded" <?= $settings['font_style'] === 'rounded' ? 'selected' : '' ?>>둥근 고딕</option>
-        </select>
-      </label>
-      <label>
-        <span>헤더 높이(px)</span>
-        <input type="number" name="header_height" min="120" max="360" value="<?= (int)$settings['header_height'] ?>">
-      </label>
-    </div>
-
-    <div class="customize-checks">
-      <label class="wf-checkfield"><input type="checkbox" name="show_intro" value="1" <?= (int)$settings['show_intro'] === 1 ? 'checked' : '' ?>><span>소개글 표시</span></label>
-      <label class="wf-checkfield"><input type="checkbox" name="show_post_summary" value="1" <?= (int)$settings['show_post_summary'] === 1 ? 'checked' : '' ?>><span>글 요약 표시</span></label>
-      <label class="wf-checkfield"><input type="checkbox" name="show_visit_count" value="1" <?= (int)$settings['show_visit_count'] === 1 ? 'checked' : '' ?>><span>방문자 수 표시</span></label>
-    </div>
-
-    <div class="wf-actions">
+    <div class="customize-actions">
       <a class="btn-ghost-dark" href="blog.php?id=<?= $userId ?>">내 블로그 보기</a>
       <button type="submit" class="btn-primary">저장</button>
     </div>
   </form>
 </section>
+
+<script>
+(function () {
+  var form = document.querySelector('[data-customize-form]');
+  var preview = document.querySelector('[data-customize-preview]');
+  if (!form || !preview) return;
+
+  function contrast(hex) {
+    hex = (hex || '').replace('#', '');
+    if (hex.length !== 6) return '#2d3436';
+    var r = parseInt(hex.slice(0, 2), 16);
+    var g = parseInt(hex.slice(2, 4), 16);
+    var b = parseInt(hex.slice(4, 6), 16);
+    return ((r * 299 + g * 587 + b * 114) / 1000) >= 150 ? '#2d3436' : '#ffffff';
+  }
+
+  function setField(name, value) {
+    var field = form.elements[name];
+    if (field) field.value = value;
+  }
+
+  function refreshPreview() {
+    var accent = form.elements.accent_color.value;
+    var bg = form.elements.background_color.value;
+    var profile = form.elements.profile_card_color.value;
+    var profileText = contrast(profile);
+    preview.style.setProperty('--preview-accent', accent);
+    preview.style.setProperty('--preview-bg', bg);
+    preview.style.setProperty('--preview-profile', profile);
+    preview.style.setProperty('--preview-profile-text', profileText);
+  }
+
+  document.querySelectorAll('[data-preset]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var preset = JSON.parse(button.dataset.preset);
+      Object.keys(preset).forEach(function (name) {
+        setField(name, preset[name]);
+      });
+      refreshPreview();
+    });
+  });
+
+  form.addEventListener('input', refreshPreview);
+  form.addEventListener('change', refreshPreview);
+  refreshPreview();
+})();
+</script>
 
 <?php require_once __DIR__ . '/../app/footer.php'; ?>

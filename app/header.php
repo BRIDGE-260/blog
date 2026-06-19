@@ -24,6 +24,7 @@ require_once __DIR__ . '/db.php';
 
 // 페이지가 $pageTitle 을 안 정했으면 기본값 사용
 $pageTitle = $pageTitle ?? 'MyBlog';
+$pageClass = $pageClass ?? '';
 // 로그인했으면 닉네임, 아니면 null
 $loginNickname = $_SESSION['nickname'] ?? null;
 $flashToast = $_SESSION['flash_toast'] ?? '';
@@ -88,7 +89,7 @@ if (isset($_SESSION['user_id'])) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title><?= htmlspecialchars($pageTitle) ?></title>
-<link rel="stylesheet" href="../assets/css/style.css?v=20260619g">
+<link rel="stylesheet" href="../assets/css/style.css?v=20260619k">
 </head>
 <body <?= $flashToast !== '' ? 'data-flash-toast="' . htmlspecialchars($flashToast, ENT_QUOTES) . '"' : '' ?>>
 
@@ -124,5 +125,5 @@ if (isset($_SESSION['user_id'])) {
   </nav>
 </header>
 
-<main class="page">
+<main class="page<?= $pageClass !== '' ? ' ' . htmlspecialchars($pageClass, ENT_QUOTES) : '' ?>">
 
