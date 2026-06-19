@@ -123,6 +123,10 @@ $blogClasses = [
     'blog-shell--font-' . $blogSettings['font_style'],
     'blog-shell--title-' . $blogSettings['title_align'],
 ];
+$stageClasses = [
+    'blog-stage',
+    'blog-stage--profile-' . $blogSettings['profile_shape'],
+];
 $blogBgStyle = 'background-color:' . $blogSettings['background_color'] . ';';
 if (!empty($blogSettings['background_image_stored'])) {
     $blogBgStyle .= "background-image:url('../uploads/" . htmlspecialchars($blogSettings['background_image_stored'], ENT_QUOTES) . "');"
@@ -283,81 +287,91 @@ function blogUrl($n, $ownerId, $cat, $status = 'all') {
 }
 
 $pageTitle = ($owner['blog_title'] ?: $owner['nickname'] . '님의 블로그') . ' · MyBlog';
+$pageClass = 'page--wide';
+$emptyTitle = '아직 글이 없어요.';
+$emptyText = '첫 글이 발행되면 이 공간이 블로그 피드로 채워져요.';
+if ($isOwner && $status === 'draft') {
+    $emptyTitle = '임시저장한 글이 없어요.';
+    $emptyText = '새 글을 쓰다가 임시저장하면 여기에서 이어서 쓸 수 있어요.';
+} elseif ($isOwner) {
+    $emptyText = '첫 글을 쓰면 이 공간이 블로그 피드로 채워져요.';
+} elseif (!$isOwner) {
+    $emptyTitle = '아직 공개된 글이 없어요.';
+    $emptyText = '블로그 주인이 글을 발행하면 이곳에 표시돼요.';
+}
 require_once __DIR__ . '/../app/header.php';
 ?>
 
-<div class="<?= htmlspecialchars(implode(' ', $blogClasses)) ?>"
-     style="<?= htmlspecialchars($blogStyle . $blogBgStyle, ENT_QUOTES) ?>">
+<div class="<?= htmlspecialchars(implode(' ', $stageClasses)) ?>"
+     style="<?= htmlspecialchars($blogStyle, ENT_QUOTES) ?>">
 
-  <section class="blog-cover">
-    <?php if (!empty($blogSettings['header_image_stored'])): ?>
-      <img src="../uploads/<?= htmlspecialchars($blogSettings['header_image_stored']) ?>" alt="">
-    <?php endif; ?>
-    <div class="blog-cover__text">
-      <h1><?= htmlspecialchars($owner['blog_title'] ?: $owner['nickname'] . '님의 블로그') ?></h1>
-      <?php if (!empty($owner['intro']) && (int)$blogSettings['show_intro'] === 1): ?>
-        <p><?= nl2br(htmlspecialchars($owner['intro'])) ?></p>
-      <?php endif; ?>
-      <?php if ($isOwner): ?>
-        <a href="blog_customize.php">블로그 꾸미기</a>
-      <?php endif; ?>
-    </div>
-  </section>
-
-<div class="blog-layout">
-
-  <!-- 사이드바 -->
   <aside class="blog-side">
-    <div class="profile">
-      <div class="profile__img">
-        <?php if (!empty($owner['profile_image_stored'])): ?>
-          <img src="../uploads/<?= htmlspecialchars($owner['profile_image_stored']) ?>" alt="">
-        <?php else: ?>
-          <span><?= htmlspecialchars(mb_substr($owner['nickname'], 0, 1)) ?></span>
-        <?php endif; ?>
-      </div>
-      <div class="profile__title"><?= htmlspecialchars($owner['blog_title'] ?: $owner['nickname'] . '님의 블로그') ?></div>
-      <div class="profile__nick"><?= htmlspecialchars($owner['nickname']) ?></div>
-      <?php if (!empty($owner['intro']) && (int)$blogSettings['show_intro'] === 1): ?>
-        <p class="profile__intro"><?= nl2br(htmlspecialchars($owner['intro'])) ?></p>
-      <?php endif; ?>
-
-      <?php if ($isLogin && !$isOwner): ?>
-        <form method="post" action="blog.php?id=<?= $ownerId ?>">
-          <input type="hidden" name="action" value="neighbor">
-          <button type="submit" class="<?= $iAddedOwner ? 'btn-ghost-dark' : 'btn-primary' ?>">
-            <?= $iAddedOwner ? '이웃 취소' : '이웃 추가' ?>
-          </button>
-        </form>
-      <?php endif; ?>
-
-      <?php if ((int)$blogSettings['show_visit_count'] === 1): ?>
-        <div class="profile__visit">
-          오늘 <?= $todayVisit ?> · 전체 <?= $totalVisit ?>
-          <?php if ($isOwner): ?><br><a href="stats.php">통계 보기</a> · <a href="liked.php">좋아요한 글</a> · <a href="scraps.php">스크랩</a><?php endif; ?>
+    <div class="blog-rail">
+      <div class="profile">
+        <div class="profile__img">
+          <?php if (!empty($owner['profile_image_stored'])): ?>
+            <img src="../uploads/<?= htmlspecialchars($owner['profile_image_stored']) ?>" alt="">
+          <?php else: ?>
+            <span><?= htmlspecialchars(mb_substr($owner['nickname'], 0, 1)) ?></span>
+          <?php endif; ?>
         </div>
-      <?php elseif ($isOwner): ?>
-        <div class="profile__visit"><a href="stats.php">통계 보기</a> · <a href="liked.php">좋아요한 글</a> · <a href="scraps.php">스크랩</a></div>
-      <?php endif; ?>
+        <div class="profile__title"><?= htmlspecialchars($owner['blog_title'] ?: $owner['nickname'] . '님의 블로그') ?></div>
+        <div class="profile__nick"><?= htmlspecialchars($owner['nickname']) ?></div>
+        <?php if (!empty($owner['intro']) && (int)$blogSettings['show_intro'] === 1): ?>
+          <p class="profile__intro"><?= nl2br(htmlspecialchars($owner['intro'])) ?></p>
+        <?php endif; ?>
 
-      <a class="profile__gb" href="guestbook.php?id=<?= $ownerId ?>">📖 방명록</a>
-      <?php if ($isOwner): ?><a class="profile__gb" href="blog_customize.php">블로그 꾸미기</a><?php endif; ?>
+        <?php if ($isLogin && !$isOwner): ?>
+          <form method="post" action="blog.php?id=<?= $ownerId ?>">
+            <input type="hidden" name="action" value="neighbor">
+            <button type="submit" class="<?= $iAddedOwner ? 'btn-ghost-dark' : 'btn-primary' ?>">
+              <?= $iAddedOwner ? '이웃 취소' : '이웃 추가' ?>
+            </button>
+          </form>
+        <?php endif; ?>
+
+        <?php if ((int)$blogSettings['show_visit_count'] === 1): ?>
+          <div class="profile__visit">
+            오늘 <?= $todayVisit ?> · 전체 <?= $totalVisit ?>
+            <?php if ($isOwner): ?><br><a href="stats.php">통계 보기</a> · <a href="liked.php">좋아요한 글</a> · <a href="scraps.php">스크랩</a><?php endif; ?>
+          </div>
+        <?php elseif ($isOwner): ?>
+          <div class="profile__visit"><a href="stats.php">통계 보기</a> · <a href="liked.php">좋아요한 글</a> · <a href="scraps.php">스크랩</a></div>
+        <?php endif; ?>
+
+        <a class="profile__gb" href="guestbook.php?id=<?= $ownerId ?>">방명록</a>
+        <?php if ($isOwner): ?><a class="profile__gb" href="blog_customize.php">블로그 꾸미기</a><?php endif; ?>
+      </div>
+
+      <nav class="cat-list">
+        <div class="cat-list__head">카테고리<?php if ($isOwner): ?><a class="cat-list__manage" href="categories_manage.php">관리</a><?php endif; ?></div>
+        <a class="<?= $cat === 0 ? 'on' : '' ?>" href="blog.php?id=<?= $ownerId ?>">전체</a>
+        <?php foreach ($categories as $c): ?>
+          <a class="<?= $cat === (int)$c['id'] ? 'on' : '' ?>"
+             href="blog.php?id=<?= $ownerId ?>&cat=<?= (int)$c['id'] ?>">
+            <?= htmlspecialchars($c['name']) ?>
+          </a>
+        <?php endforeach; ?>
+      </nav>
     </div>
-
-    <nav class="cat-list">
-      <div class="cat-list__head">카테고리<?php if ($isOwner): ?><a class="cat-list__manage" href="categories_manage.php">관리</a><?php endif; ?></div>
-      <a class="<?= $cat === 0 ? 'on' : '' ?>" href="blog.php?id=<?= $ownerId ?>">전체</a>
-      <?php foreach ($categories as $c): ?>
-        <a class="<?= $cat === (int)$c['id'] ? 'on' : '' ?>"
-           href="blog.php?id=<?= $ownerId ?>&cat=<?= (int)$c['id'] ?>">
-          <?= htmlspecialchars($c['name']) ?>
-        </a>
-      <?php endforeach; ?>
-    </nav>
   </aside>
 
   <!-- 글 목록 -->
+  <div class="<?= htmlspecialchars(implode(' ', $blogClasses)) ?>"
+       style="<?= htmlspecialchars($blogStyle . $blogBgStyle, ENT_QUOTES) ?>">
   <main class="blog-main">
+    <section class="blog-cover">
+      <?php if (!empty($blogSettings['header_image_stored'])): ?>
+        <img src="../uploads/<?= htmlspecialchars($blogSettings['header_image_stored']) ?>" alt="">
+      <?php endif; ?>
+      <div class="blog-cover__text">
+        <h1><?= htmlspecialchars($owner['blog_title'] ?: $owner['nickname'] . '님의 블로그') ?></h1>
+        <?php if (!empty($owner['intro']) && (int)$blogSettings['show_intro'] === 1): ?>
+          <p><?= nl2br(htmlspecialchars($owner['intro'])) ?></p>
+        <?php endif; ?>
+      </div>
+    </section>
+
     <?php if ($isOwner): ?>
       <nav class="manage-tabs">
         <a class="<?= $status === 'all'       ? 'on' : '' ?>" href="<?= blogUrl(1, $ownerId, $cat, 'all') ?>">전체 <?= $statusCnt['all'] ?></a>
@@ -367,7 +381,12 @@ require_once __DIR__ . '/../app/header.php';
     <?php endif; ?>
 
     <?php if (!$posts): ?>
-      <p class="empty"><?= ($isOwner && $status === 'draft') ? '임시저장한 글이 없어요.' : '아직 글이 없어요.' ?></p>
+      <div class="blog-empty">
+        <span>MyBlog</span>
+        <h2><?= htmlspecialchars($emptyTitle) ?></h2>
+        <p><?= htmlspecialchars($emptyText) ?></p>
+        <?php if ($isOwner): ?><a class="btn-primary" href="write.php">첫 글 쓰기</a><?php endif; ?>
+      </div>
     <?php else: ?>
       <div class="feed">
         <?php foreach ($posts as $p): ?>

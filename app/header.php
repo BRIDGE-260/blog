@@ -89,15 +89,33 @@ if (isset($_SESSION['user_id'])) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title><?= htmlspecialchars($pageTitle) ?></title>
-<link rel="stylesheet" href="../assets/css/style.css?v=20260619k">
+<link rel="stylesheet" href="../assets/css/style.css?v=20260620e">
 </head>
 <body <?= $flashToast !== '' ? 'data-flash-toast="' . htmlspecialchars($flashToast, ENT_QUOTES) . '"' : '' ?>>
 
 <header class="topbar">
+  <button class="topbar__toggle" type="button" aria-label="메뉴 열기" aria-controls="sideMenu" aria-expanded="false" data-menu-open>
+    <span></span>
+    <span></span>
+    <span></span>
+  </button>
   <a class="topbar__brand" href="index.php">My<span>Blog</span></a>
-  <button class="topbar__toggle" type="button" aria-label="메뉴"
-          onclick="this.nextElementSibling.classList.toggle('open')">☰</button>
-  <nav class="topbar__nav">
+</header>
+
+<div class="menu-dim" data-menu-close hidden></div>
+<aside class="side-menu" id="sideMenu" aria-hidden="true" inert>
+  <div class="side-menu__head">
+    <div class="side-menu__kicker">MyBlog Menu</div>
+    <div class="side-menu__brand">My<span>Blog</span></div>
+    <p>오늘의 글, 이웃의 소식,<br>나만의 기록을 한곳에.</p>
+    <div class="side-menu__stripe" aria-hidden="true">
+      <span></span><span></span><span></span>
+    </div>
+    <button class="side-menu__close" type="button" aria-label="메뉴 닫기" data-menu-close>×</button>
+  </div>
+
+  <nav class="side-menu__nav" aria-label="전체 메뉴">
+    <a href="index.php">블로그 홈</a>
     <?php if ($loginNickname): ?>
       <a href="write.php">글쓰기</a>
       <a href="blog.php?id=<?= (int)$_SESSION['user_id'] ?>">내 블로그</a>
@@ -108,6 +126,7 @@ if (isset($_SESSION['user_id'])) {
           <span class="topbar__badge"><?= $unreadNotifications > 99 ? '99+' : (int)$unreadNotifications ?></span>
         <?php endif; ?>
       </a>
+      <a href="scraps.php">스크랩</a>
       <a class="topbar__me" href="profile.php">
         <span class="topbar__avatar">
           <?php if (!empty($loginAvatar)): ?>
@@ -123,7 +142,8 @@ if (isset($_SESSION['user_id'])) {
       <a href="auth.php">로그인</a>
     <?php endif; ?>
   </nav>
-</header>
+
+</aside>
 
 <main class="page<?= $pageClass !== '' ? ' ' . htmlspecialchars($pageClass, ENT_QUOTES) : '' ?>">
 
