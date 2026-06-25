@@ -297,6 +297,7 @@ CREATE TABLE `users` (
   `profile_image_stored` varchar(255) DEFAULT NULL COMMENT '프로필 이미지 저장 파일명(변환됨)',
   `created_at` datetime NOT NULL DEFAULT current_timestamp() COMMENT '가입 일시',
   `notifications_read_at` datetime NOT NULL DEFAULT '1970-01-01 00:00:00' COMMENT '마지막 소식 확인 시각',
+  `is_admin` tinyint(1) NOT NULL DEFAULT 0 COMMENT 'admin flag',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_users_email` (`email`),
   UNIQUE KEY `uq_users_nickname` (`nickname`)

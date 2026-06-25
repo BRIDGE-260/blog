@@ -32,15 +32,22 @@ unset($_SESSION['flash_toast']);
 
 // 상단바 아바타용 — 로그인 유저의 프로필 이미지(없으면 null)
 $loginAvatar = null;
+$loginIsAdmin = false;
 $unreadNotifications = 0;
 if (isset($_SESSION['user_id'])) {
-    $stmt = $conn->prepare("SELECT profile_image_stored, notifications_read_at FROM users WHERE id = ?");
+    $adminColumnResult = $conn->query("SHOW COLUMNS FROM users LIKE 'is_admin'");
+    $hasAdminColumn = $adminColumnResult && $adminColumnResult->num_rows > 0;
+    $loginUserSql = $hasAdminColumn
+        ? "SELECT profile_image_stored, notifications_read_at, is_admin FROM users WHERE id = ?"
+        : "SELECT profile_image_stored, notifications_read_at, 0 AS is_admin FROM users WHERE id = ?";
+    $stmt = $conn->prepare($loginUserSql);
     $stmt->bind_param("i", $_SESSION['user_id']);
     $stmt->execute();
     $loginUser = $stmt->get_result()->fetch_assoc();
     $stmt->close();
 
     $loginAvatar = $loginUser['profile_image_stored'] ?? null;
+    $loginIsAdmin = (int)($loginUser['is_admin'] ?? 0) === 1;
 
     $stmt = $conn->prepare(
         "SELECT COUNT(*) AS cnt
@@ -96,7 +103,7 @@ if (isset($_SESSION['user_id'])) {
   document.documentElement.setAttribute('data-font-size', saved);
 })();
 </script>
-<link rel="stylesheet" href="../assets/css/style.css?v=20260625a">
+<link rel="stylesheet" href="../assets/css/style.css?v=20260625b">
 </head>
 <body <?= $flashToast !== '' ? 'data-flash-toast="' . htmlspecialchars($flashToast, ENT_QUOTES) . '"' : '' ?>>
 
@@ -127,6 +134,9 @@ if (isset($_SESSION['user_id'])) {
       <a href="write.php">글쓰기</a>
       <a href="blog.php?id=<?= (int)$_SESSION['user_id'] ?>">내 블로그</a>
       <a href="neighbors.php">이웃</a>
+      <?php if ($loginIsAdmin): ?>
+        <a href="admin.php">관리자</a>
+      <?php endif; ?>
       <a class="topbar__noti" href="notifications.php">
         소식
         <?php if ($unreadNotifications > 0): ?>

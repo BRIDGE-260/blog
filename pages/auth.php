@@ -102,13 +102,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   document.documentElement.setAttribute('data-font-size', saved);
 })();
 </script>
-<link rel="stylesheet" href="../assets/css/auth.css?v=20260625a">
+<link rel="stylesheet" href="../assets/css/auth.css?v=20260625g">
 </head>
 <body>
 
 <a class="auth-home" href="index.php">← 메인으로</a>
 
-<section class="auth-font-tools" aria-label="글자 크기 설정">
+<button class="auth-font-toggle" type="button" aria-label="글자 크기 설정 열기" aria-controls="authFontTools" aria-expanded="false" data-font-panel-toggle>가</button>
+
+<section class="auth-font-tools" id="authFontTools" aria-label="글자 크기 설정" hidden>
   <strong>BRIDGE 206</strong>
   <span>글자 크기</span>
   <div data-font-size-control>
@@ -195,7 +197,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <script>
   (function () {
-    var controls = document.querySelectorAll('[data-font-size-control]');
+    var panel = document.querySelector('[id="authFontTools"]');
+    var toggle = document.querySelector('[data-font-panel-toggle]');
     function setFontSizeMode(mode) {
       if (!/^(normal|large|xlarge)$/.test(mode)) mode = 'normal';
       document.documentElement.setAttribute('data-font-size', mode);
@@ -210,11 +213,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       });
     });
     setFontSizeMode(document.documentElement.getAttribute('data-font-size') || 'normal');
+
+    function closePanel() {
+      if (!panel || !toggle) return;
+      panel.hidden = true;
+      panel.classList.remove('is-open');
+      toggle.setAttribute('aria-expanded', 'false');
+    }
+
+    function openPanel() {
+      if (!panel || !toggle) return;
+      panel.hidden = false;
+      requestAnimationFrame(function () {
+        panel.classList.add('is-open');
+        toggle.setAttribute('aria-expanded', 'true');
+      });
+    }
+
+    if (toggle && panel) {
+      toggle.addEventListener('click', function () {
+        if (panel.hidden) openPanel();
+        else closePanel();
+      });
+      document.addEventListener('click', function (e) {
+        if (panel.hidden) return;
+        if (panel.contains(e.target) || toggle.contains(e.target)) return;
+        closePanel();
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closePanel();
+      });
+    }
   })();
 
   // 다크 패널 가운데 버튼을 누르면 로그인 ↔ 회원가입 슬라이딩 전환
   document.querySelector('.img__btn').addEventListener('click', function () {
-    document.querySelector('.cont').classList.toggle('s--signup');
+    var cont = document.querySelector('.cont');
+    if (!cont) return;
+    if (cont.classList.contains('s--signup')) {
+      cont.classList.add('is-returning');
+      requestAnimationFrame(function () {
+        cont.classList.remove('s--signup');
+        window.setTimeout(function () {
+          cont.classList.remove('is-returning');
+        }, 900);
+      });
+    } else {
+      cont.classList.remove('is-returning');
+      cont.classList.add('s--signup');
+    }
   });
 
   (function () {

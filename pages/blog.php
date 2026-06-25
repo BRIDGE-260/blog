@@ -439,6 +439,36 @@ require_once __DIR__ . '/../app/header.php';
   </main>
 
 </div>
+
+  <aside class="blog-assist" aria-label="BRIDGE 206 블로그 도움">
+    <section class="blog-assist__card">
+      <span>BRIDGE 206</span>
+      <h2>오늘의 글감</h2>
+      <p>다른 세대에게 물어보고 싶은 질문 하나를 골라 짧게 적어보세요.</p>
+      <a href="<?= $isOwner ? 'write.php' : 'guestbook.php?id=' . $ownerId ?>">
+        <?= $isOwner ? '질문으로 글쓰기' : '방명록에 인사하기' ?>
+      </a>
+    </section>
+
+    <section class="blog-assist__card blog-assist__card--soft">
+      <h2><?= $isOwner ? '내 블로그 관리' : '이 블로그에서' ?></h2>
+      <nav>
+        <?php if ($isOwner): ?>
+          <a href="write.php">새 글 쓰기</a>
+          <a href="blog_customize.php">꾸미기 바꾸기</a>
+          <a href="stats.php">방문 통계 보기</a>
+        <?php else: ?>
+          <a href="guestbook.php?id=<?= $ownerId ?>">방명록 보기</a>
+          <?php if ($isLogin): ?>
+            <a href="neighbors.php?tab=find">이웃 더 찾아보기</a>
+          <?php else: ?>
+            <a href="auth.php">로그인하고 이웃 맺기</a>
+          <?php endif; ?>
+          <a href="index.php">다른 글 둘러보기</a>
+        <?php endif; ?>
+      </nav>
+    </section>
+  </aside>
 </div>
 
 <?php require_once __DIR__ . '/../app/footer.php'; ?>

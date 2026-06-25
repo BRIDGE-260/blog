@@ -2,4 +2,4 @@ RewriteEngine On
 
 # Keep old root-level PHP URLs working after moving screens into /pages.
 RewriteRule ^api\.php$ api/api.php [L,QSA]
-RewriteRule ^(auth|blog|blog_customize|bloggers|categories_manage|delete|guestbook|liked|logout|manage|modify|neighbors|neighbor_posts|notifications|password|profile|scraps|stats|view|withdraw|write)\.php$ pages/$1.php [L,QSA]
+RewriteRule ^(admin|auth|blog|blog_customize|bloggers|categories_manage|delete|guestbook|liked|logout|manage|modify|neighbors|neighbor_posts|notifications|password|profile|scraps|stats|view|withdraw|write)\.php$ pages/$1.php [L,QSA]
