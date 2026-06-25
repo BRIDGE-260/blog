@@ -169,7 +169,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$pageTitle = '블로그 꾸미기 · MyBlog';
+$pageTitle = '블로그 꾸미기 · BRIDGE 206';
 $pageClass = 'page--wide';
 require_once __DIR__ . '/../app/header.php';
 ?>

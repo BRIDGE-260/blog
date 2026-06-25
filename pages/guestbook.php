@@ -20,7 +20,7 @@ $owner = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 
 if (!$owner) {
-    $pageTitle = '방명록 · MyBlog';
+    $pageTitle = '방명록 · BRIDGE 206';
     require_once __DIR__ . '/../app/header.php';
     echo '<p class="empty">블로그를 찾을 수 없어요.</p>';
     require_once __DIR__ . '/../app/footer.php';
@@ -67,7 +67,7 @@ $entries = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
 $ownerName = $owner['blog_title'] ?: $owner['nickname'] . '님의 블로그';
-$pageTitle = $owner['nickname'] . '님의 방명록 · MyBlog';
+$pageTitle = $owner['nickname'] . '님의 방명록 · BRIDGE 206';
 require_once __DIR__ . '/../app/header.php';
 ?>
 

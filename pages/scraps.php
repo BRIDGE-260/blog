@@ -31,7 +31,7 @@ $stmt->execute();
 $posts = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
-$pageTitle = '스크랩한 글 · MyBlog';
+$pageTitle = '스크랩한 글 · BRIDGE 206';
 require_once __DIR__ . '/../app/header.php';
 ?>
 

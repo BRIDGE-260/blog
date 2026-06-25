@@ -106,7 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$pageTitle = '프로필 수정 · MyBlog';
+$pageTitle = '프로필 수정 · BRIDGE 206';
 require_once __DIR__ . '/../app/header.php';
 ?>
 

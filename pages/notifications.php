@@ -144,7 +144,7 @@ if ($feed) {
     $stmt->close();
 }
 
-$pageTitle = '소식 · MyBlog';
+$pageTitle = '소식 · BRIDGE 206';
 require_once __DIR__ . '/../app/header.php';
 ?>
 

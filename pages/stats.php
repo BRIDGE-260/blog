@@ -42,7 +42,7 @@ $stmt->execute();
 $totalVisit = (int)$stmt->get_result()->fetch_assoc()['total'];
 $stmt->close();
 
-$pageTitle = '방문자 통계 · MyBlog';
+$pageTitle = '방문자 통계 · BRIDGE 206';
 require_once __DIR__ . '/../app/header.php';
 ?>
 

@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
-$pageTitle = '글 삭제 · MyBlog';
+$pageTitle = '글 삭제 · BRIDGE 206';
 require_once __DIR__ . '/../app/header.php';
 ?>
 

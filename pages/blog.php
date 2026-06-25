@@ -22,7 +22,7 @@ $owner = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 
 if (!$owner) {
-    $pageTitle = '블로그 · MyBlog';
+    $pageTitle = '블로그 · BRIDGE 206';
     require_once __DIR__ . '/../app/header.php';
     echo '<p class="empty">블로그를 찾을 수 없어요.</p>';
     require_once __DIR__ . '/../app/footer.php';
@@ -286,7 +286,7 @@ function blogUrl($n, $ownerId, $cat, $status = 'all') {
     return 'blog.php?' . http_build_query($qs);
 }
 
-$pageTitle = ($owner['blog_title'] ?: $owner['nickname'] . '님의 블로그') . ' · MyBlog';
+$pageTitle = ($owner['blog_title'] ?: $owner['nickname'] . '님의 블로그') . ' · BRIDGE 206';
 $pageClass = 'page--wide';
 $emptyTitle = '아직 글이 없어요.';
 $emptyText = '첫 글이 발행되면 이 공간이 블로그 피드로 채워져요.';
@@ -382,7 +382,7 @@ require_once __DIR__ . '/../app/header.php';
 
     <?php if (!$posts): ?>
       <div class="blog-empty">
-        <span>MyBlog</span>
+        <span>BRIDGE 206</span>
         <h2><?= htmlspecialchars($emptyTitle) ?></h2>
         <p><?= htmlspecialchars($emptyText) ?></p>
         <?php if ($isOwner): ?><a class="btn-primary" href="write.php">첫 글 쓰기</a><?php endif; ?>

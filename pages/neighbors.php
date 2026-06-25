@@ -111,7 +111,7 @@ if ($tab === 'neighbors') {
     $stmt->close();
 }
 
-$pageTitle = ($tab === 'find' ? '블로그 찾기' : '이웃') . ' · MyBlog';
+$pageTitle = ($tab === 'find' ? '블로그 찾기' : '이웃') . ' · BRIDGE 206';
 require_once __DIR__ . '/../app/header.php';
 
 /**
@@ -133,7 +133,7 @@ function userCard($u, $action, $label, $class, $opts = []) {
     <div class="nbr">
       <a class="nbr__main" href="blog.php?id=<?= (int)$u['id'] ?>">
         <div class="nbr__img"><?= $img ?></div>
-        <div>
+        <div class="nbr__text">
           <div class="nbr__title"><?= htmlspecialchars($title) ?>
             <?php if (!empty($opts['mutual'])): ?><em class="nbr__mutual">서로이웃</em><?php endif; ?>
           </div>
@@ -188,6 +188,11 @@ function userCard($u, $action, $label, $class, $opts = []) {
 
   <section class="nbr-sec">
     <h1>블로그 찾기</h1>
+    <div class="neighbor-bridge">
+      <span>BRIDGE 206 이웃 찾기</span>
+      <strong>나이보다 관심사로 먼저 연결되는 공간</strong>
+      <p>20대와 60대를 시작점으로, 모든 세대가 서로의 일상과 취미를 발견할 수 있도록 블로그를 찾아보세요.</p>
+    </div>
 
     <form class="nbr-search" method="get" action="neighbors.php">
       <input type="hidden" name="tab" value="find">

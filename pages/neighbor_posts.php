@@ -50,7 +50,7 @@ $stmt->execute();
 $posts = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
-$pageTitle = '이웃 새 글 · MyBlog';
+$pageTitle = '이웃 새 글 · BRIDGE 206';
 require_once __DIR__ . '/../app/header.php';
 ?>
 

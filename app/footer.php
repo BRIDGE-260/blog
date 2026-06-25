@@ -1,7 +1,7 @@
 </main><!-- .page (header.php 에서 열림) -->
 
 <footer class="sitefooter">
-  <p>© <?= date('Y') ?> MyBlog · 학교 실습 프로젝트</p>
+  <p>© <?= date('Y') ?> BRIDGE 206 · 모든 세대를 잇는 블로그</p>
 </footer>
 
 <div class="ui-toast" data-toast hidden></div>
@@ -24,6 +24,23 @@
   var menuDim = document.querySelector('[data-menu-close].menu-dim');
   var menuOpen = document.querySelector('[data-menu-open]');
   var menuCloseItems = document.querySelectorAll('[data-menu-close]');
+  var fontSizeControls = document.querySelectorAll('[data-font-size-control]');
+
+  function setFontSizeMode(mode) {
+    if (!/^(normal|large|xlarge)$/.test(mode)) mode = 'normal';
+    document.documentElement.setAttribute('data-font-size', mode);
+    localStorage.setItem('bridge206FontSize', mode);
+    document.querySelectorAll('[data-font-size-option]').forEach(function (button) {
+      button.classList.toggle('is-active', button.getAttribute('data-font-size-option') === mode);
+    });
+  }
+
+  document.querySelectorAll('[data-font-size-option]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      setFontSizeMode(button.getAttribute('data-font-size-option'));
+    });
+  });
+  setFontSizeMode(document.documentElement.getAttribute('data-font-size') || 'normal');
 
   function openSideMenu() {
     if (!menu || !menuDim || !menuOpen) return;

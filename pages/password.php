@@ -48,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$pageTitle = '비밀번호 변경 · MyBlog';
+$pageTitle = '비밀번호 변경 · BRIDGE 206';
 require_once __DIR__ . '/../app/header.php';
 ?>
 

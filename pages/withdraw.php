@@ -85,7 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$pageTitle = '회원 탈퇴 · MyBlog';
+$pageTitle = '회원 탈퇴 · BRIDGE 206';
 require_once __DIR__ . '/../app/header.php';
 ?>
 

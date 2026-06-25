@@ -162,7 +162,7 @@ $hero = $conn->query(
 $isHome = !$ajax;   // 전체 페이지(헤더·히어로·위젯)는 일반 요청에서만. AJAX면 피드만 출력.
 
 if (!$ajax) {
-    $pageTitle = '블로그 메인 · MyBlog';
+    $pageTitle = '블로그 메인 · BRIDGE 206';
     require_once __DIR__ . '/../app/header.php';
 }
 ?>
@@ -177,6 +177,43 @@ if (!$ajax) {
       <span class="hero__nick"><?= htmlspecialchars($hero['nickname']) ?>님</span>
     </div>
   </a>
+<?php endif; ?>
+
+<?php if ($isHome): ?>
+  <section class="bridge-panel" aria-label="BRIDGE 206 소개">
+    <div>
+      <span class="bridge-panel__eyebrow">BRIDGE 206</span>
+      <h1>20대와 60대에서 시작해, 모든 세대를 잇는 블로그</h1>
+      <p>읽기 편한 글자 크기와 세대가 함께 나눌 수 있는 이야기로 서로의 일상을 연결합니다.</p>
+    </div>
+    <div class="bridge-panel__question">
+      <span>오늘의 연결 질문</span>
+      <strong>다른 세대에게 가장 물어보고 싶은 것은 무엇인가요?</strong>
+    </div>
+    <div class="bridge-panel__features" aria-label="BRIDGE 206 특징">
+      <a href="#bridge-feature-reading">읽기 편한 글자 크기</a>
+      <a href="#bridge-feature-topics">세대별 관심 주제</a>
+      <a href="#bridge-feature-question">함께 묻는 연결 질문</a>
+    </div>
+  </section>
+
+  <section class="bridge-feature-detail" aria-label="BRIDGE 206 기능 설명">
+    <article id="bridge-feature-reading">
+      <span>01</span>
+      <h2>읽기 편한 글자 크기</h2>
+      <p>보통, 크게, 가장 크게 중 선택하면 글자뿐 아니라 버튼, 입력창, 카드 간격까지 함께 커져서 어느 세대든 편하게 읽을 수 있어요.</p>
+    </article>
+    <article id="bridge-feature-topics">
+      <span>02</span>
+      <h2>세대별 관심 주제</h2>
+      <p>자동차, 영화, 취미, 어학처럼 세대마다 관심사가 다른 주제를 한곳에 모아 서로의 일상을 발견하도록 돕습니다.</p>
+    </article>
+    <article id="bridge-feature-question">
+      <span>03</span>
+      <h2>함께 묻는 연결 질문</h2>
+      <p>다른 세대에게 궁금한 질문을 먼저 보여주어 글쓰기와 댓글 대화가 자연스럽게 이어지도록 만든 장치입니다.</p>
+    </article>
+  </section>
 <?php endif; ?>
 
 <!-- ① 이웃 새 글 -->
@@ -235,12 +272,18 @@ if (!$ajax) {
 
 <!-- 카테고리(주제) 탭 — 둘러보기 바로 위 -->
 <?php if ($isHome): ?>
-<nav class="cat-tabs">
-  <a class="<?= $cat === '' ? 'on' : '' ?>" href="index.php">전체</a>
-  <?php foreach ($FIXED_CATEGORIES as $cn): ?>
-    <a class="<?= $cat === $cn ? 'on' : '' ?>" href="index.php?cat=<?= urlencode($cn) ?>"><?= htmlspecialchars($cn) ?></a>
-  <?php endforeach; ?>
-</nav>
+<section class="category-panel" aria-label="관심 주제">
+  <div class="category-panel__head">
+    <span>관심 주제</span>
+    <strong>세대가 함께 읽는 이야기</strong>
+  </div>
+  <nav class="cat-tabs">
+    <a class="<?= $cat === '' ? 'on' : '' ?>" href="index.php">전체</a>
+    <?php foreach ($FIXED_CATEGORIES as $cn): ?>
+      <a class="<?= $cat === $cn ? 'on' : '' ?>" href="index.php?cat=<?= urlencode($cn) ?>"><?= htmlspecialchars($cn) ?></a>
+    <?php endforeach; ?>
+  </nav>
+</section>
 <?php endif; ?>
 
 <!-- ③ 메인 피드 (AJAX로 교체되는 영역) -->

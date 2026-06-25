@@ -94,12 +94,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>로그인 / 회원가입 · MyBlog</title>
-<link rel="stylesheet" href="../assets/css/auth.css?v=20260619b">
+<title>로그인 / 회원가입 · BRIDGE 206</title>
+<script>
+(function () {
+  var saved = localStorage.getItem('bridge206FontSize') || 'normal';
+  if (!/^(normal|large|xlarge)$/.test(saved)) saved = 'normal';
+  document.documentElement.setAttribute('data-font-size', saved);
+})();
+</script>
+<link rel="stylesheet" href="../assets/css/auth.css?v=20260625a">
 </head>
 <body>
 
 <a class="auth-home" href="index.php">← 메인으로</a>
+
+<section class="auth-font-tools" aria-label="글자 크기 설정">
+  <strong>BRIDGE 206</strong>
+  <span>글자 크기</span>
+  <div data-font-size-control>
+    <button type="button" data-font-size-option="normal">보통</button>
+    <button type="button" data-font-size-option="large">크게</button>
+    <button type="button" data-font-size-option="xlarge">가장 크게</button>
+  </div>
+</section>
 
 <!-- $mode 가 register 면 s--signup 클래스를 줘서 회원가입 화면이 먼저 보이게 함 -->
 <div class="cont <?= $mode === 'register' ? 's--signup' : '' ?>">
@@ -177,6 +194,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 
 <script>
+  (function () {
+    var controls = document.querySelectorAll('[data-font-size-control]');
+    function setFontSizeMode(mode) {
+      if (!/^(normal|large|xlarge)$/.test(mode)) mode = 'normal';
+      document.documentElement.setAttribute('data-font-size', mode);
+      localStorage.setItem('bridge206FontSize', mode);
+      document.querySelectorAll('[data-font-size-option]').forEach(function (button) {
+        button.classList.toggle('is-active', button.getAttribute('data-font-size-option') === mode);
+      });
+    }
+    document.querySelectorAll('[data-font-size-option]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        setFontSizeMode(button.getAttribute('data-font-size-option'));
+      });
+    });
+    setFontSizeMode(document.documentElement.getAttribute('data-font-size') || 'normal');
+  })();
+
   // 다크 패널 가운데 버튼을 누르면 로그인 ↔ 회원가입 슬라이딩 전환
   document.querySelector('.img__btn').addEventListener('click', function () {
     document.querySelector('.cont').classList.toggle('s--signup');

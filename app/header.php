@@ -7,7 +7,7 @@
  *   2) <!DOCTYPE> ~ <head> ~ 상단바(topbar) 까지 출력
  *
  * 사용법 (페이지에서):
- *   $pageTitle = '글쓰기 · MyBlog';        // (선택) 안 정하면 기본값
+ *   $pageTitle = '글쓰기 · BRIDGE 206';    // (선택) 안 정하면 기본값
  *   require_once __DIR__ . '/header.php';
  *   ... 페이지 내용 ...
  *   require_once __DIR__ . '/footer.php';
@@ -23,7 +23,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/db.php';
 
 // 페이지가 $pageTitle 을 안 정했으면 기본값 사용
-$pageTitle = $pageTitle ?? 'MyBlog';
+$pageTitle = $pageTitle ?? 'BRIDGE 206';
 $pageClass = $pageClass ?? '';
 // 로그인했으면 닉네임, 아니면 null
 $loginNickname = $_SESSION['nickname'] ?? null;
@@ -89,7 +89,14 @@ if (isset($_SESSION['user_id'])) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title><?= htmlspecialchars($pageTitle) ?></title>
-<link rel="stylesheet" href="../assets/css/style.css?v=20260620e">
+<script>
+(function () {
+  var saved = localStorage.getItem('bridge206FontSize') || 'normal';
+  if (!/^(normal|large|xlarge)$/.test(saved)) saved = 'normal';
+  document.documentElement.setAttribute('data-font-size', saved);
+})();
+</script>
+<link rel="stylesheet" href="../assets/css/style.css?v=20260625a">
 </head>
 <body <?= $flashToast !== '' ? 'data-flash-toast="' . htmlspecialchars($flashToast, ENT_QUOTES) . '"' : '' ?>>
 
@@ -99,15 +106,15 @@ if (isset($_SESSION['user_id'])) {
     <span></span>
     <span></span>
   </button>
-  <a class="topbar__brand" href="index.php">My<span>Blog</span></a>
+  <a class="topbar__brand" href="index.php">BRIDGE<span>206</span></a>
 </header>
 
 <div class="menu-dim" data-menu-close hidden></div>
 <aside class="side-menu" id="sideMenu" aria-hidden="true" inert>
   <div class="side-menu__head">
-    <div class="side-menu__kicker">MyBlog Menu</div>
-    <div class="side-menu__brand">My<span>Blog</span></div>
-    <p>오늘의 글, 이웃의 소식,<br>나만의 기록을 한곳에.</p>
+    <div class="side-menu__kicker">BRIDGE 206</div>
+    <div class="side-menu__brand">BRIDGE<span>206</span></div>
+    <p>20대와 60대를 넘어<br>모든 세대를 잇는 블로그</p>
     <div class="side-menu__stripe" aria-hidden="true">
       <span></span><span></span><span></span>
     </div>
@@ -142,6 +149,15 @@ if (isset($_SESSION['user_id'])) {
       <a href="auth.php">로그인</a>
     <?php endif; ?>
   </nav>
+
+  <section class="font-tools" aria-label="글자 크기 설정">
+    <strong>글자 크기</strong>
+    <div class="font-tools__buttons" data-font-size-control>
+      <button type="button" data-font-size-option="normal">보통</button>
+      <button type="button" data-font-size-option="large">크게</button>
+      <button type="button" data-font-size-option="xlarge">가장 크게</button>
+    </div>
+  </section>
 
 </aside>
 

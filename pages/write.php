@@ -142,8 +142,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$pageTitle = '글쓰기 · MyBlog';
+$pageTitle = '글쓰기 · BRIDGE 206';
 require_once __DIR__ . '/../app/header.php';
+
+$bridgeQuestions = [
+    [
+        'label' => '추억 잇기',
+        'title' => '다른 세대에게 들려주고 싶은 추억은 무엇인가요?',
+        'body'  => '내가 오래 기억하고 있는 장소, 노래, 물건, 사람 이야기를 다른 세대에게 소개해보세요.',
+    ],
+    [
+        'label' => '요즘 묻기',
+        'title' => '요즘 세대에게 궁금한 것이 있나요?',
+        'body'  => '새로운 문화, 기술, 말투, 취미처럼 잘 모르지만 알고 싶은 것을 질문처럼 풀어보세요.',
+    ],
+    [
+        'label' => '함께 추천',
+        'title' => '나이와 상관없이 함께 추천하고 싶은 것은 무엇인가요?',
+        'body'  => '책, 영화, 음악, 산책 코스, 생활 팁처럼 모든 세대가 같이 즐길 수 있는 것을 적어보세요.',
+    ],
+];
 ?>
 
 <section class="write">
@@ -156,6 +174,25 @@ require_once __DIR__ . '/../app/header.php';
   <form class="write-form" method="post" action="write.php" enctype="multipart/form-data">
     <input class="wf-title" type="text" name="title" placeholder="제목"
            value="<?= htmlspecialchars($title) ?>" required>
+
+    <section class="bridge-write" aria-label="BRIDGE 206 글감 질문">
+      <div class="bridge-write__head">
+        <span>BRIDGE 206 글감</span>
+        <strong>세대를 잇는 질문으로 글을 시작해보세요.</strong>
+      </div>
+      <div class="bridge-write__grid">
+        <?php foreach ($bridgeQuestions as $q): ?>
+          <button type="button"
+                  class="bridge-write__card"
+                  data-bridge-question="<?= htmlspecialchars($q['title'], ENT_QUOTES) ?>"
+                  data-bridge-guide="<?= htmlspecialchars($q['body'], ENT_QUOTES) ?>">
+            <span><?= htmlspecialchars($q['label']) ?></span>
+            <strong><?= htmlspecialchars($q['title']) ?></strong>
+            <em><?= htmlspecialchars($q['body']) ?></em>
+          </button>
+        <?php endforeach; ?>
+      </div>
+    </section>
 
     <div class="wf-row">
       <label>
@@ -213,6 +250,37 @@ require_once __DIR__ . '/../app/header.php';
 
 <script src="../assets/js/taginput.js?v=20260619c"></script>
 <script src="../assets/js/imageinsert.js?v=20260619d"></script>
+<script>
+(function () {
+  var editor = document.getElementById('editor');
+  var titleInput = document.querySelector('.wf-title');
+  var cards = document.querySelectorAll('[data-bridge-question]');
+  if (!editor || !cards.length) return;
+
+  function appendQuestion(question, guide) {
+    var text = 'BRIDGE 206 질문: ' + question + '\n' + guide + '\n\n';
+    editor.focus();
+    if (editor.innerText.trim() !== '' || editor.querySelector('.editor-img')) {
+      editor.appendChild(document.createElement('br'));
+      editor.appendChild(document.createElement('br'));
+    }
+    text.split('\n').forEach(function (line, index, arr) {
+      if (line !== '') editor.appendChild(document.createTextNode(line));
+      if (index < arr.length - 1) editor.appendChild(document.createElement('br'));
+    });
+    if (titleInput && titleInput.value.trim() === '') {
+      titleInput.value = question;
+    }
+    window.showToast && window.showToast('글감 질문을 본문에 추가했어요.', false);
+  }
+
+  cards.forEach(function (card) {
+    card.addEventListener('click', function () {
+      appendQuestion(card.getAttribute('data-bridge-question'), card.getAttribute('data-bridge-guide'));
+    });
+  });
+})();
+</script>
 
 <?php require_once __DIR__ . '/../app/footer.php'; ?>
 

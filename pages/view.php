@@ -263,7 +263,7 @@ function renderContent(string $content, array $images): array {
     return [$html, $used];
 }
 
-$pageTitle = ($post && $canView ? $post['title'] : '글') . ' · MyBlog';
+$pageTitle = ($post && $canView ? $post['title'] : '글') . ' · BRIDGE 206';
 require_once __DIR__ . '/../app/header.php';
 ?>
 

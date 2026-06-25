@@ -123,6 +123,18 @@ host=localhost, username=user1, password=1234, database=blog
 - 공통 변수는 `style.css` 의 `:root` (`--accent` 등). auth 화면은 전용 `auth.css`.
 - 모바일 반응형 고려. 사이드 메뉴 구조는 네이버 블로그/티스토리 참고.
 
+## BRIDGE 206 테마 / 접근성 방향
+
+- 팀명은 **BRIDGE 206** 으로 사용한다. 20대와 60대를 시작점으로 삼되, 특정 세대만 강조하지 않고 모든 세대를 잇는 블로그라는 의미로 설명한다.
+- 공통 상단/하단 브랜드는 `BRIDGE 206` 으로 통일한다.
+- 전 화면에 글자 크기 설정을 적용한다. 옵션은 `보통`, `크게`, `가장 크게` 3단계이며, 현재 선택값은 `localStorage` 의 `bridge206FontSize` 에 저장한다.
+- 글자 크기 설정은 단순 확대가 아니라, 글자 크기와 함께 여백, 버튼 높이, 카드 배치, 검색창, 카테고리, 썸네일 영역이 깨지지 않게 반응형으로 조정한다.
+- 특히 `가장 크게` 모드는 메인, 로그인/회원가입, 내 블로그, 블로그 꾸미기, 글쓰기, 글 상세, 이웃/블로그 찾기 화면에서 실제로 글자가 커져야 한다. 레이아웃만 커지고 글자가 그대로인 상태는 버그로 본다.
+- 메인 소개 영역의 BRIDGE 206 배지/기능 배지는 클릭 가능한 안내 요소로 사용한다. 각 설명은 읽기 편의, 세대 질문, 이웃 연결처럼 블로그 테마와 직접 연결한다.
+- 글쓰기 화면에는 BRIDGE 206 글감 질문 카드를 제공한다. 질문 클릭 시 제목이 비어 있으면 제목을 채우고, 본문에는 세대 간 대화를 시작할 수 있는 질문/가이드를 추가한다.
+- 이웃/블로그 찾기 화면은 세대와 관심사를 잇는 탐색 화면으로 다듬는다. 큰 글씨에서도 카드 제목, 닉네임, 글 수, 이웃 추가 버튼이 겹치지 않아야 한다.
+- 메인 히어로 이미지는 좌우 끝에 검은 줄이 보이지 않도록 배경 레이어를 보정한다.
+
 ## 공통 구조 (include 패턴)
 
 - 일반 페이지: `session_start` → 로그인 검사 → (POST 처리) → `$pageTitle` 지정
@@ -139,10 +151,10 @@ host=localhost, username=user1, password=1234, database=blog
 ## 현재까지 만든 파일 (전부 완성, prepared statement 준수)
 
 - `app/db.php` — mysqli 접속
-- `app/header.php` / `app/footer.php` / `assets/css/style.css` — 공통 레이아웃·스타일
-- `pages/auth.php` (+`assets/css/auth.css`) — 로그인/회원가입 슬라이딩 폼(탄색+사진). 성공 시 index.php
-- `pages/index.php` — 블로그 메인: 이웃 새 글 + 인기 태그 + 정렬(최신/인기) + 검색 + 태그필터 + 페이징
-- `pages/write.php` — 글쓰기: 카테고리/공개설정/태그(N:M)/본문이미지 토큰삽입(썸네일 별도없음)/임시저장·발행
+- `app/header.php` / `app/footer.php` / `assets/css/style.css` — 공통 레이아웃·스타일, BRIDGE 206 브랜드, 공통 글자 크기 설정 UI/저장 처리
+- `pages/auth.php` (+`assets/css/auth.css`) — 로그인/회원가입 슬라이딩 폼(탄색+사진). 성공 시 index.php. auth 화면 전용 큰 글씨 모드 포함
+- `pages/index.php` — 블로그 메인: BRIDGE 206 소개/기능 배지, 이웃 새 글 + 인기 태그 + 정렬(최신/인기) + 검색 + 태그필터 + 페이징
+- `pages/write.php` — 글쓰기: BRIDGE 206 글감 질문 카드, 카테고리/공개설정/태그(N:M)/본문이미지 토큰삽입(썸네일 별도없음)/임시저장·발행
 - `assets/js/imageinsert.js` — 본문 이미지 토큰 삽입 도우미(write/modify 공용): 미리보기 클릭→커서에 `[[img:..]]`
 - `pages/view.php` — 글 상세: 조회수(세션 1회·본인제외), 태그, 공감(likes AJAX 토글)+공감자 목록, 스크랩(scraps AJAX 토글),
   링크복사 버튼, 이미지 라이트박스(클릭 확대), 댓글(작성/수정/삭제 + 대댓글),
@@ -156,7 +168,7 @@ host=localhost, username=user1, password=1234, database=blog
   배경 표시 방식, 레이아웃, 사이드바 위치, 프로필 모양, 글 목록/썸네일/폰트/표시 옵션 저장
 - `pages/manage.php` — 내 글 관리 화면은 blog.php 로 통합됨. 이제 `blog.php?id=내id&status=..` 로 리다이렉트만
 - `pages/neighbors.php` — 이웃 + 블로그 찾기(탭 통합): `내 이웃`(서로이웃/취소·나를 추가한 사람) /
-  `블로그 찾기`(tab=find: 전체 사용자 + 검색(닉네임·제목) + 정렬(글많은/최신가입/이름) + 이웃추가)
+  `블로그 찾기`(tab=find: 전체 사용자 + 검색(닉네임·제목) + 정렬(글많은/최신가입/이름) + 이웃추가). BRIDGE 206 소개 박스와 큰 글씨 카드 레이아웃 포함
 - `pages/bloggers.php` — 이제 `neighbors.php?tab=find` 로 리다이렉트만 (찾기 화면은 neighbors.php 가 담당)
 - `pages/notifications.php` — 내 소식: 내 글 댓글+공감+이웃 새 글+방명록 타임라인.
   `notification_reads` 기준으로 읽음/안 읽음 표시, 항목 클릭 시 개별 읽음 처리. 소식에서 들어간 글/방명록에는 "소식으로 돌아가기" 링크 표시.
