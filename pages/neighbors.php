@@ -46,9 +46,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // ============================================================
 // 데이터 조회 — 활성 탭에 맞춰
 // ============================================================
-$myNeighbors = $addedMe = $users = [];
+$myNeighbors = $addedMe = $users = $recommendedUsers = [];
 $q = trim($_GET['q'] ?? '');
 $sort = $_GET['sort'] ?? 'posts';
+
+$viewerCategories = [];
+$stmt = $conn->prepare(
+    "SELECT DISTINCT c.name
+     FROM posts p
+     JOIN categories c ON c.id = p.category_id
+     WHERE p.user_id = ? AND p.status = 'published'
+     ORDER BY c.name"
+);
+$stmt->bind_param("i", $viewerId);
+$stmt->execute();
+foreach ($stmt->get_result()->fetch_all(MYSQLI_ASSOC) as $row) {
+    $viewerCategories[] = $row['name'];
+}
+$stmt->close();
 
 if ($tab === 'neighbors') {
     // ① 내 이웃 (서로이웃 여부 mutual 포함)
@@ -81,20 +96,42 @@ if ($tab === 'neighbors') {
 } else {
     // 블로그 찾기 — 검색어 + 정렬(화이트리스트로 안전하게)
     $orderMap = [
+        'match'  => 'shared_count DESC, post_count DESC, u.nickname',
         'posts'  => 'post_count DESC, u.nickname',
         'recent' => 'u.created_at DESC',
         'name'   => 'u.nickname',
     ];
-    $order = $orderMap[$sort] ?? $orderMap['posts'];
+    $order = $orderMap[$sort] ?? $orderMap['match'];
+    if (!isset($orderMap[$sort])) $sort = 'match';
+
+    $sharedSelect = "0 AS shared_count";
+    $sharedTypes = "";
+    $sharedParams = [];
+    if ($viewerCategories) {
+        $placeholders = implode(',', array_fill(0, count($viewerCategories), '?'));
+        $sharedSelect = "(SELECT COUNT(DISTINCT c2.name)
+                          FROM posts p2
+                          JOIN categories c2 ON c2.id = p2.category_id
+                          WHERE p2.user_id = u.id
+                            AND p2.status = 'published'
+                            AND p2.visibility = 'all'
+                            AND c2.name IN ($placeholders)) AS shared_count";
+        $sharedTypes = str_repeat('s', count($viewerCategories));
+        $sharedParams = $viewerCategories;
+    }
 
     $sql = "SELECT u.id, u.nickname, u.blog_title, u.profile_image_stored,
                    (SELECT COUNT(*) FROM posts p
                     WHERE p.user_id = u.id AND p.status='published' AND p.visibility='all') AS post_count,
+                   $sharedSelect,
+                   (SELECT p3.title FROM posts p3
+                    WHERE p3.user_id = u.id AND p3.status='published' AND p3.visibility='all'
+                    ORDER BY p3.created_at DESC LIMIT 1) AS latest_title,
                    EXISTS(SELECT 1 FROM neighbors n WHERE n.user_id = ? AND n.neighbor_id = u.id) AS is_neighbor
             FROM users u
             WHERE u.id <> ?";
-    $types  = "ii";
-    $params = [$viewerId, $viewerId];
+    $types  = $sharedTypes . "ii";
+    $params = array_merge($sharedParams, [$viewerId, $viewerId]);
     if ($q !== '') {
         $sql .= " AND (u.nickname LIKE ? OR u.blog_title LIKE ?)";
         $like = '%' . $q . '%';
@@ -109,6 +146,18 @@ if ($tab === 'neighbors') {
     $stmt->execute();
     $users = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
+
+    $recommendedUsers = $users;
+    usort($recommendedUsers, function ($a, $b) {
+        $sharedDiff = (int)($b['shared_count'] ?? 0) <=> (int)($a['shared_count'] ?? 0);
+        if ($sharedDiff !== 0) return $sharedDiff;
+        $postDiff = (int)($b['post_count'] ?? 0) <=> (int)($a['post_count'] ?? 0);
+        if ($postDiff !== 0) return $postDiff;
+        return strcmp($a['nickname'], $b['nickname']);
+    });
+    $recommendedUsers = array_slice(array_filter($recommendedUsers, function ($u) {
+        return (int)($u['post_count'] ?? 0) > 0;
+    }), 0, 3);
 }
 
 $pageTitle = ($tab === 'find' ? '블로그 찾기' : '이웃') . ' · BRIDGE 206';
@@ -120,7 +169,7 @@ require_once __DIR__ . '/../app/header.php';
  *   $action  : 'add' | 'cancel'
  *   $label   : 버튼 글자
  *   $class   : 버튼 클래스
- *   $opts    : ['mutual'=>bool, 'meta'=>'글 3', 'rtab'=>'find', 'rq'=>..., 'rsort'=>...]
+ *   $opts    : ['mutual'=>bool, 'meta'=>'글 3', 'latest'=>'...', 'shared'=>1, 'rtab'=>'find', 'rq'=>..., 'rsort'=>...]
  */
 function userCard($u, $action, $label, $class, $opts = []) {
     $img = !empty($u['profile_image_stored'])
@@ -138,6 +187,12 @@ function userCard($u, $action, $label, $class, $opts = []) {
             <?php if (!empty($opts['mutual'])): ?><em class="nbr__mutual">서로이웃</em><?php endif; ?>
           </div>
           <div class="nbr__nick"><?= $nick ?></div>
+          <?php if (!empty($opts['latest']) || !empty($opts['shared'])): ?>
+            <div class="nbr__extra">
+              <?php if (!empty($opts['shared'])): ?><span>공통 주제 <?= (int)$opts['shared'] ?></span><?php endif; ?>
+              <?php if (!empty($opts['latest'])): ?><em>최근 글: <?= htmlspecialchars(mb_strimwidth($opts['latest'], 0, 34, '…')) ?></em><?php endif; ?>
+            </div>
+          <?php endif; ?>
         </div>
       </a>
       <form method="post" action="neighbors.php">
@@ -199,6 +254,7 @@ function userCard($u, $action, $label, $class, $opts = []) {
       <input type="text" name="q" value="<?= htmlspecialchars($q) ?>"
              placeholder="닉네임 또는 블로그 제목 검색">
       <select name="sort" onchange="this.form.submit()">
+        <option value="match"  <?= $sort === 'match'  ? 'selected' : '' ?>>추천 순</option>
         <option value="posts"  <?= $sort === 'posts'  ? 'selected' : '' ?>>글 많은 순</option>
         <option value="recent" <?= $sort === 'recent' ? 'selected' : '' ?>>최신 가입 순</option>
         <option value="name"   <?= $sort === 'name'   ? 'selected' : '' ?>>이름 순</option>
@@ -206,12 +262,45 @@ function userCard($u, $action, $label, $class, $opts = []) {
       <button type="submit" class="btn-primary">검색</button>
     </form>
 
+    <?php if ($q === '' && $recommendedUsers): ?>
+      <section class="neighbor-reco" aria-label="관심사 추천 블로그">
+        <div class="neighbor-reco__head">
+          <span>관심사 추천</span>
+          <strong><?= $viewerCategories ? '내가 쓴 주제와 겹치는 블로그' : '지금 읽어볼 만한 블로그' ?></strong>
+        </div>
+        <div class="neighbor-reco__grid">
+          <?php foreach ($recommendedUsers as $u):
+              $rd = [
+                  'rtab' => 'find',
+                  'rq' => $q,
+                  'rsort' => $sort,
+                  'meta' => '글 ' . (int)$u['post_count'],
+                  'latest' => $u['latest_title'] ?? '',
+                  'shared' => (int)($u['shared_count'] ?? 0),
+              ];
+              if ($u['is_neighbor']) {
+                  userCard($u, 'cancel', '이웃 취소', 'btn-ghost-dark', $rd);
+              } else {
+                  userCard($u, 'add', '이웃 추가', 'btn-primary', $rd);
+              }
+          endforeach; ?>
+        </div>
+      </section>
+    <?php endif; ?>
+
     <?php if (!$users): ?>
       <p class="empty"><?= $q !== '' ? '검색 결과가 없어요.' : '아직 다른 사용자가 없어요.' ?></p>
     <?php else: ?>
       <div class="nbr-list">
         <?php foreach ($users as $u):
-            $rd = ['rtab' => 'find', 'rq' => $q, 'rsort' => $sort, 'meta' => '글 ' . (int)$u['post_count']];
+            $rd = [
+                'rtab' => 'find',
+                'rq' => $q,
+                'rsort' => $sort,
+                'meta' => '글 ' . (int)$u['post_count'],
+                'latest' => $u['latest_title'] ?? '',
+                'shared' => (int)($u['shared_count'] ?? 0),
+            ];
             if ($u['is_neighbor']) {
                 userCard($u, 'cancel', '이웃 취소', 'btn-ghost-dark', $rd);
             } else {

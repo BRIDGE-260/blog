@@ -25,6 +25,13 @@ $stmt->execute();
 $user = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 
+if (!$user) {
+    session_unset();
+    session_destroy();
+    header('Location: auth.php');
+    exit;
+}
+
 // ── POST: 저장 ─────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $nickname  = trim($_POST['nickname'] ?? '');
@@ -110,7 +117,7 @@ $pageTitle = '프로필 수정 · BRIDGE 206';
 require_once __DIR__ . '/../app/header.php';
 ?>
 
-<section class="setting">
+<section class="setting profile-setting">
   <h1>프로필 수정</h1>
 
   <?php if ($saved): ?>
@@ -120,7 +127,28 @@ require_once __DIR__ . '/../app/header.php';
     <div class="form-error"><?= htmlspecialchars($error) ?></div>
   <?php endif; ?>
 
-  <form class="write-form" method="post" action="profile.php" enctype="multipart/form-data">
+  <div class="profile-bridge" aria-label="BRIDGE 206 프로필 도우미">
+    <div class="profile-bridge__head">
+      <span>BRIDGE 206 프로필</span>
+      <strong>내 블로그가 어떤 세대와도 대화를 시작할 수 있게 소개를 잡아보세요.</strong>
+    </div>
+    <div class="profile-bridge__cards">
+      <button type="button" data-title="세대가 함께 읽는 일상 기록" data-intro="20대의 오늘과 60대의 기억이 함께 머물 수 있는 일상과 생각을 기록합니다. 서로 다른 경험이 편하게 만나는 블로그예요.">
+        <span>일상 연결</span>
+        <strong>오늘의 이야기와 오래된 기억을 같이 남기기</strong>
+      </button>
+      <button type="button" data-title="취향을 이어주는 작은 기록실" data-intro="음악, 영화, 책, 취미처럼 나이와 상관없이 함께 이야기할 수 있는 취향을 모읍니다. 댓글로 서로의 추천도 나누고 싶어요.">
+        <span>취향 연결</span>
+        <strong>세대마다 다른 추천과 감상을 모으기</strong>
+      </button>
+      <button type="button" data-title="서로에게 묻는 BRIDGE 노트" data-intro="다른 세대에게 궁금했던 질문을 가볍게 꺼내고, 내 경험으로 답해보는 블로그입니다. 낯선 생각도 천천히 읽을 수 있게 씁니다.">
+        <span>질문 연결</span>
+        <strong>궁금한 것을 묻고 경험으로 답하기</strong>
+      </button>
+    </div>
+  </div>
+
+  <form class="write-form profile-form" method="post" action="profile.php" enctype="multipart/form-data">
     <div class="pf-avatar">
       <div class="pf-avatar__img">
         <?php if (!empty($user['profile_image_stored'])): ?>
@@ -182,6 +210,29 @@ require_once __DIR__ . '/../app/header.php';
 
   <p class="setting__danger"><a href="withdraw.php">회원 탈퇴</a></p>
 </section>
+
+<script>
+(function () {
+  const helper = document.querySelector('.profile-bridge');
+  if (!helper) return;
+
+  const titleInput = document.querySelector('input[name="blog_title"]');
+  const introInput = document.querySelector('textarea[name="intro"]');
+
+  helper.addEventListener('click', function (event) {
+    const button = event.target.closest('button[data-title]');
+    if (!button) return;
+
+    if (titleInput && titleInput.value.trim() === '') {
+      titleInput.value = button.dataset.title || '';
+    }
+    if (introInput) {
+      introInput.value = button.dataset.intro || '';
+      introInput.focus();
+    }
+  });
+})();
+</script>
 
 <?php require_once __DIR__ . '/../app/footer.php'; ?>
 

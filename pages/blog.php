@@ -14,7 +14,7 @@ $ownerId  = (int)($_GET['id'] ?? $viewerId);    // id 없으면 내 블로그
 
 // 블로그 주인 정보
 $stmt = $conn->prepare(
-    "SELECT id, nickname, blog_title, intro, profile_image_stored FROM users WHERE id = ?"
+    "SELECT id, nickname, blog_title, intro, profile_image_stored, notifications_read_at FROM users WHERE id = ?"
 );
 $stmt->bind_param("i", $ownerId);
 $stmt->execute();
@@ -218,6 +218,7 @@ if ($isOwner) {
 $cat     = (int)($_GET['cat'] ?? 0);
 $perPage = 6;
 $page    = max(1, (int)($_GET['page'] ?? 1));
+$blogSearch = trim($_GET['q'] ?? '');
 
 // 본인일 때만 상태 필터 (방문자는 항상 발행글만)
 $status = $_GET['status'] ?? 'all';
@@ -247,9 +248,22 @@ if ($cat > 0) {
     $params[] = $cat;
     $types   .= "i";
 }
+if ($blogSearch !== '') {
+    $where .= " AND (p.title LIKE ? OR p.content LIKE ? OR c.name LIKE ?)";
+    $like = '%' . $blogSearch . '%';
+    $params[] = $like;
+    $params[] = $like;
+    $params[] = $like;
+    $types .= "sss";
+}
 
 // 개수 → 페이지 수
-$stmt = $conn->prepare("SELECT COUNT(*) AS cnt FROM posts p WHERE $where");
+$stmt = $conn->prepare(
+    "SELECT COUNT(*) AS cnt
+     FROM posts p
+     LEFT JOIN categories c ON c.id = p.category_id
+     WHERE $where"
+);
 $stmt->bind_param($types, ...$params);
 $stmt->execute();
 $total = (int)$stmt->get_result()->fetch_assoc()['cnt'];
@@ -278,11 +292,258 @@ $stmt->execute();
 $posts = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
+$latestDraft = null;
+$recentComments = [];
+$recentGuestbook = [];
+$topPosts = [];
+$relatedBlogs = [];
+$sideStats = [
+    'published' => 0,
+    'draft' => 0,
+    'comments' => 0,
+    'likes' => 0,
+    'guestbook' => 0,
+    'neighbors' => 0,
+    'new_comments' => 0,
+    'new_likes' => 0,
+    'new_guestbook' => 0,
+    'uncategorized' => 0,
+];
+
+if ($isOwner) {
+    $stmt = $conn->prepare(
+        "SELECT id, title, updated_at
+         FROM posts
+         WHERE user_id = ? AND status = 'draft'
+         ORDER BY updated_at DESC, id DESC
+         LIMIT 1"
+    );
+    $stmt->bind_param("i", $ownerId);
+    $stmt->execute();
+    $latestDraft = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+}
+
+$stmt = $conn->prepare(
+    "SELECT
+        SUM(CASE WHEN status = 'published' THEN 1 ELSE 0 END) AS published_count,
+        SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS draft_count
+     FROM posts
+     WHERE user_id = ?"
+);
+$stmt->bind_param("i", $ownerId);
+$stmt->execute();
+$postSummary = $stmt->get_result()->fetch_assoc();
+$stmt->close();
+$sideStats['published'] = (int)($postSummary['published_count'] ?? 0);
+$sideStats['draft'] = (int)($postSummary['draft_count'] ?? 0);
+
+$stmt = $conn->prepare(
+    "SELECT COUNT(*) AS cnt
+     FROM comments cm
+     JOIN posts p ON p.id = cm.post_id
+     WHERE p.user_id = ?"
+);
+$stmt->bind_param("i", $ownerId);
+$stmt->execute();
+$sideStats['comments'] = (int)$stmt->get_result()->fetch_assoc()['cnt'];
+$stmt->close();
+
+$stmt = $conn->prepare(
+    "SELECT COUNT(*) AS cnt
+     FROM likes l
+     JOIN posts p ON p.id = l.post_id
+     WHERE p.user_id = ?"
+);
+$stmt->bind_param("i", $ownerId);
+$stmt->execute();
+$sideStats['likes'] = (int)$stmt->get_result()->fetch_assoc()['cnt'];
+$stmt->close();
+
+$stmt = $conn->prepare("SELECT COUNT(*) AS cnt FROM guestbook WHERE owner_id = ?");
+$stmt->bind_param("i", $ownerId);
+$stmt->execute();
+$sideStats['guestbook'] = (int)$stmt->get_result()->fetch_assoc()['cnt'];
+$stmt->close();
+
+$stmt = $conn->prepare("SELECT COUNT(*) AS cnt FROM neighbors WHERE neighbor_id = ?");
+$stmt->bind_param("i", $ownerId);
+$stmt->execute();
+$sideStats['neighbors'] = (int)$stmt->get_result()->fetch_assoc()['cnt'];
+$stmt->close();
+
+if ($isOwner) {
+    $stmt = $conn->prepare("SELECT COUNT(*) AS cnt FROM posts WHERE user_id = ? AND category_id IS NULL");
+    $stmt->bind_param("i", $ownerId);
+    $stmt->execute();
+    $sideStats['uncategorized'] = (int)$stmt->get_result()->fetch_assoc()['cnt'];
+    $stmt->close();
+
+    $readAt = $owner['notifications_read_at'] ?: '1970-01-01 00:00:00';
+
+    $stmt = $conn->prepare(
+        "SELECT COUNT(*) AS cnt
+         FROM comments cm
+         JOIN posts p ON p.id = cm.post_id
+         WHERE p.user_id = ? AND cm.user_id <> ? AND cm.created_at > ?"
+    );
+    $stmt->bind_param("iis", $ownerId, $ownerId, $readAt);
+    $stmt->execute();
+    $sideStats['new_comments'] = (int)$stmt->get_result()->fetch_assoc()['cnt'];
+    $stmt->close();
+
+    $stmt = $conn->prepare(
+        "SELECT COUNT(*) AS cnt
+         FROM likes l
+         JOIN posts p ON p.id = l.post_id
+         WHERE p.user_id = ? AND l.user_id <> ? AND l.created_at > ?"
+    );
+    $stmt->bind_param("iis", $ownerId, $ownerId, $readAt);
+    $stmt->execute();
+    $sideStats['new_likes'] = (int)$stmt->get_result()->fetch_assoc()['cnt'];
+    $stmt->close();
+
+    $stmt = $conn->prepare(
+        "SELECT COUNT(*) AS cnt
+         FROM guestbook
+         WHERE owner_id = ? AND user_id <> ? AND created_at > ?"
+    );
+    $stmt->bind_param("iis", $ownerId, $ownerId, $readAt);
+    $stmt->execute();
+    $sideStats['new_guestbook'] = (int)$stmt->get_result()->fetch_assoc()['cnt'];
+    $stmt->close();
+}
+
+$guestbookWhere = "g.owner_id = ?";
+$guestbookTypes = "i";
+$guestbookParams = [$ownerId];
+if ($isOwner) {
+    $guestbookWhere .= " AND g.user_id <> ?";
+    $guestbookTypes .= "i";
+    $guestbookParams[] = $ownerId;
+}
+$stmt = $conn->prepare(
+    "SELECT g.content, g.created_at, u.nickname
+     FROM guestbook g
+     JOIN users u ON u.id = g.user_id
+     WHERE $guestbookWhere
+     ORDER BY g.created_at DESC
+     LIMIT 2"
+);
+$stmt->bind_param($guestbookTypes, ...$guestbookParams);
+$stmt->execute();
+$recentGuestbook = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+
+$commentWhere = "p.user_id = ?";
+$commentTypes = "i";
+$commentParams = [$ownerId];
+if (!$isOwner) {
+    if ($isNeighborRel) {
+        $commentWhere .= " AND p.status = 'published' AND p.visibility IN ('all','neighbor')";
+    } else {
+        $commentWhere .= " AND p.status = 'published' AND p.visibility = 'all'";
+    }
+}
+$stmt = $conn->prepare(
+    "SELECT cm.post_id, cm.content, cm.created_at, u.nickname, p.title
+     FROM comments cm
+     JOIN posts p ON p.id = cm.post_id
+     JOIN users u ON u.id = cm.user_id
+     WHERE $commentWhere
+     ORDER BY cm.created_at DESC
+     LIMIT 2"
+);
+$stmt->bind_param($commentTypes, ...$commentParams);
+$stmt->execute();
+$recentComments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+
+$topWhere = "p.user_id = ?";
+$topTypes = "i";
+$topParams = [$ownerId];
+if ($isOwner) {
+    $topWhere .= " AND p.status = 'published'";
+} elseif ($isNeighborRel) {
+    $topWhere .= " AND p.status = 'published' AND p.visibility IN ('all','neighbor')";
+} else {
+    $topWhere .= " AND p.status = 'published' AND p.visibility = 'all'";
+}
+$stmt = $conn->prepare(
+    "SELECT p.id, p.title, p.view_count,
+            (SELECT COUNT(*) FROM likes l WHERE l.post_id = p.id) AS like_count,
+            (SELECT COUNT(*) FROM comments cm WHERE cm.post_id = p.id) AS comment_count
+     FROM posts p
+     WHERE $topWhere
+     ORDER BY like_count DESC, comment_count DESC, p.view_count DESC, p.created_at DESC
+     LIMIT 2"
+);
+$stmt->bind_param($topTypes, ...$topParams);
+$stmt->execute();
+$topPosts = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+
+$categoryNames = [];
+foreach ($categories as $category) {
+    $categoryNames[] = $category['name'];
+}
+$categoryNames = array_values(array_unique($categoryNames));
+if ($categoryNames) {
+    $placeholders = implode(',', array_fill(0, count($categoryNames), '?'));
+    $relatedTypes = 'i' . str_repeat('s', count($categoryNames));
+    $relatedParams = array_merge([$ownerId], $categoryNames);
+    $stmt = $conn->prepare(
+        "SELECT u.id, u.nickname, u.blog_title, u.profile_image_stored,
+                COUNT(DISTINCT p.id) AS matched_posts
+         FROM users u
+         JOIN posts p ON p.user_id = u.id AND p.status = 'published' AND p.visibility = 'all'
+         JOIN categories c ON c.id = p.category_id
+         WHERE u.id <> ? AND c.name IN ($placeholders)
+         GROUP BY u.id
+         ORDER BY matched_posts DESC, u.created_at DESC
+         LIMIT 3"
+    );
+    $stmt->bind_param($relatedTypes, ...$relatedParams);
+} else {
+    $stmt = $conn->prepare(
+        "SELECT u.id, u.nickname, u.blog_title, u.profile_image_stored,
+                COUNT(p.id) AS matched_posts
+         FROM users u
+         JOIN posts p ON p.user_id = u.id AND p.status = 'published' AND p.visibility = 'all'
+         WHERE u.id <> ?
+         GROUP BY u.id
+         ORDER BY matched_posts DESC, u.created_at DESC
+         LIMIT 3"
+    );
+    $stmt->bind_param("i", $ownerId);
+}
+$stmt->execute();
+$relatedBlogs = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+
+if (!$relatedBlogs && $categoryNames) {
+    $stmt = $conn->prepare(
+        "SELECT u.id, u.nickname, u.blog_title, u.profile_image_stored,
+                COUNT(p.id) AS matched_posts
+         FROM users u
+         JOIN posts p ON p.user_id = u.id AND p.status = 'published' AND p.visibility = 'all'
+         WHERE u.id <> ?
+         GROUP BY u.id
+         ORDER BY matched_posts DESC, u.created_at DESC
+         LIMIT 3"
+    );
+    $stmt->bind_param("i", $ownerId);
+    $stmt->execute();
+    $relatedBlogs = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+}
+
 // 페이징 URL (id·cat·status 유지)
-function blogUrl($n, $ownerId, $cat, $status = 'all') {
+function blogUrl($n, $ownerId, $cat, $status = 'all', $search = '') {
     $qs = ['id' => $ownerId, 'page' => $n];
     if ($cat > 0)            $qs['cat']    = $cat;
     if ($status !== 'all')   $qs['status'] = $status;
+    if ($search !== '')      $qs['q']      = $search;
     return 'blog.php?' . http_build_query($qs);
 }
 
@@ -293,12 +554,18 @@ $emptyText = '첫 글이 발행되면 이 공간이 블로그 피드로 채워�
 if ($isOwner && $status === 'draft') {
     $emptyTitle = '임시저장한 글이 없어요.';
     $emptyText = '새 글을 쓰다가 임시저장하면 여기에서 이어서 쓸 수 있어요.';
+} elseif ($blogSearch !== '') {
+    $emptyTitle = '검색 결과가 없어요.';
+    $emptyText = '다른 검색어로 다시 찾아보거나 전체 글을 확인해보세요.';
 } elseif ($isOwner) {
     $emptyText = '첫 글을 쓰면 이 공간이 블로그 피드로 채워져요.';
 } elseif (!$isOwner) {
     $emptyTitle = '아직 공개된 글이 없어요.';
     $emptyText = '블로그 주인이 글을 발행하면 이곳에 표시돼요.';
 }
+$profileReady = trim((string)($owner['intro'] ?? '')) !== '';
+$categoryReady = count($categories) > 0;
+$draftReady = $sideStats['draft'] > 0;
 require_once __DIR__ . '/../app/header.php';
 ?>
 
@@ -333,14 +600,10 @@ require_once __DIR__ . '/../app/header.php';
         <?php if ((int)$blogSettings['show_visit_count'] === 1): ?>
           <div class="profile__visit">
             오늘 <?= $todayVisit ?> · 전체 <?= $totalVisit ?>
-            <?php if ($isOwner): ?><br><a href="stats.php">통계 보기</a> · <a href="liked.php">좋아요한 글</a> · <a href="scraps.php">스크랩</a><?php endif; ?>
           </div>
-        <?php elseif ($isOwner): ?>
-          <div class="profile__visit"><a href="stats.php">통계 보기</a> · <a href="liked.php">좋아요한 글</a> · <a href="scraps.php">스크랩</a></div>
         <?php endif; ?>
 
         <a class="profile__gb" href="guestbook.php?id=<?= $ownerId ?>">방명록</a>
-        <?php if ($isOwner): ?><a class="profile__gb" href="blog_customize.php">블로그 꾸미기</a><?php endif; ?>
       </div>
 
       <nav class="cat-list">
@@ -372,11 +635,24 @@ require_once __DIR__ . '/../app/header.php';
       </div>
     </section>
 
+    <section class="blog-searchbar" aria-label="블로그 글 검색">
+      <form method="get" action="blog.php">
+        <input type="hidden" name="id" value="<?= $ownerId ?>">
+        <?php if ($cat > 0): ?><input type="hidden" name="cat" value="<?= $cat ?>"><?php endif; ?>
+        <?php if ($isOwner && $status !== 'all'): ?><input type="hidden" name="status" value="<?= htmlspecialchars($status) ?>"><?php endif; ?>
+        <input type="text" name="q" value="<?= htmlspecialchars($blogSearch) ?>" placeholder="이 블로그 글 검색">
+        <button type="submit">검색</button>
+        <?php if ($blogSearch !== ''): ?>
+          <a href="<?= blogUrl(1, $ownerId, $cat, $status) ?>">해제</a>
+        <?php endif; ?>
+      </form>
+    </section>
+
     <?php if ($isOwner): ?>
       <nav class="manage-tabs">
-        <a class="<?= $status === 'all'       ? 'on' : '' ?>" href="<?= blogUrl(1, $ownerId, $cat, 'all') ?>">전체 <?= $statusCnt['all'] ?></a>
-        <a class="<?= $status === 'published' ? 'on' : '' ?>" href="<?= blogUrl(1, $ownerId, $cat, 'published') ?>">발행 <?= $statusCnt['published'] ?></a>
-        <a class="<?= $status === 'draft'     ? 'on' : '' ?>" href="<?= blogUrl(1, $ownerId, $cat, 'draft') ?>">임시저장 <?= $statusCnt['draft'] ?></a>
+        <a class="<?= $status === 'all'       ? 'on' : '' ?>" href="<?= blogUrl(1, $ownerId, $cat, 'all', $blogSearch) ?>">전체 <?= $statusCnt['all'] ?></a>
+        <a class="<?= $status === 'published' ? 'on' : '' ?>" href="<?= blogUrl(1, $ownerId, $cat, 'published', $blogSearch) ?>">발행 <?= $statusCnt['published'] ?></a>
+        <a class="<?= $status === 'draft'     ? 'on' : '' ?>" href="<?= blogUrl(1, $ownerId, $cat, 'draft', $blogSearch) ?>">임시저장 <?= $statusCnt['draft'] ?></a>
       </nav>
     <?php endif; ?>
 
@@ -385,7 +661,43 @@ require_once __DIR__ . '/../app/header.php';
         <span>BRIDGE 206</span>
         <h2><?= htmlspecialchars($emptyTitle) ?></h2>
         <p><?= htmlspecialchars($emptyText) ?></p>
-        <?php if ($isOwner): ?><a class="btn-primary" href="write.php">첫 글 쓰기</a><?php endif; ?>
+        <?php if ($isOwner): ?>
+          <?php if ($status === 'draft'): ?>
+            <div class="blog-empty__actions">
+              <a class="btn-primary" href="write.php">새 글 쓰기</a>
+              <a class="btn-ghost-dark" href="<?= blogUrl(1, $ownerId, $cat, 'all') ?>">전체 글 보기</a>
+            </div>
+          <?php elseif ($blogSearch !== ''): ?>
+            <div class="blog-empty__actions">
+              <a class="btn-primary" href="<?= blogUrl(1, $ownerId, $cat, $status) ?>">전체 글 보기</a>
+              <a class="btn-ghost-dark" href="write.php">새 글 쓰기</a>
+            </div>
+          <?php else: ?>
+            <div class="blog-empty__setup" aria-label="블로그 시작 체크리스트">
+              <a class="<?= $profileReady ? 'is-done' : '' ?>" href="profile.php">
+                <strong><?= $profileReady ? '완료' : '필요' ?></strong>
+                <span>프로필 소개</span>
+              </a>
+              <a class="<?= $categoryReady ? 'is-done' : '' ?>" href="categories_manage.php">
+                <strong><?= $categoryReady ? count($categories) . '개' : '필요' ?></strong>
+                <span>카테고리</span>
+              </a>
+              <a class="<?= $draftReady ? 'is-done' : '' ?>" href="<?= blogUrl(1, $ownerId, $cat, 'draft') ?>">
+                <strong><?= $draftReady ? $sideStats['draft'] . '개' : '없음' ?></strong>
+                <span>임시저장</span>
+              </a>
+            </div>
+            <div class="blog-empty__actions">
+              <a class="btn-primary" href="write.php">첫 글 쓰기</a>
+              <a class="btn-ghost-dark" href="blog_customize.php">블로그 꾸미기</a>
+            </div>
+          <?php endif; ?>
+        <?php else: ?>
+          <div class="blog-empty__actions">
+            <a class="btn-primary" href="<?= $blogSearch !== '' ? blogUrl(1, $ownerId, $cat, $status) : 'guestbook.php?id=' . $ownerId ?>"><?= $blogSearch !== '' ? '전체 글 보기' : '방명록 남기기' ?></a>
+            <a class="btn-ghost-dark" href="index.php">다른 글 둘러보기</a>
+          </div>
+        <?php endif; ?>
       </div>
     <?php else: ?>
       <div class="feed">
@@ -428,11 +740,11 @@ require_once __DIR__ . '/../app/header.php';
 
       <nav class="pager">
         <?php if ($page > 1): ?>
-          <a href="<?= blogUrl($page - 1, $ownerId, $cat, $status) ?>">‹ 이전</a>
+          <a href="<?= blogUrl($page - 1, $ownerId, $cat, $status, $blogSearch) ?>">‹ 이전</a>
         <?php endif; ?>
         <span><?= $page ?> / <?= $totalPages ?></span>
         <?php if ($page < $totalPages): ?>
-          <a href="<?= blogUrl($page + 1, $ownerId, $cat, $status) ?>">다음 ›</a>
+          <a href="<?= blogUrl($page + 1, $ownerId, $cat, $status, $blogSearch) ?>">다음 ›</a>
         <?php endif; ?>
       </nav>
     <?php endif; ?>
@@ -440,34 +752,156 @@ require_once __DIR__ . '/../app/header.php';
 
 </div>
 
-  <aside class="blog-assist" aria-label="BRIDGE 206 블로그 도움">
-    <section class="blog-assist__card">
-      <span>BRIDGE 206</span>
-      <h2>오늘의 글감</h2>
-      <p>다른 세대에게 물어보고 싶은 질문 하나를 골라 짧게 적어보세요.</p>
-      <a href="<?= $isOwner ? 'write.php' : 'guestbook.php?id=' . $ownerId ?>">
-        <?= $isOwner ? '질문으로 글쓰기' : '방명록에 인사하기' ?>
-      </a>
-    </section>
+  <aside class="blog-assist" aria-label="블로그 빠른 기능">
+    <div class="blog-rail blog-rail--assist">
+      <?php if ($isOwner): ?>
+        <section class="blog-assist__section">
+          <span>새 반응</span>
+          <h2>확인할 소식</h2>
+          <div class="blog-assist__stats">
+            <a href="notifications.php">
+              <strong><?= $sideStats['new_comments'] ?></strong>
+              <em>새 댓글</em>
+            </a>
+            <a href="notifications.php">
+              <strong><?= $sideStats['new_likes'] ?></strong>
+              <em>새 공감</em>
+            </a>
+            <a href="notifications.php">
+              <strong><?= $sideStats['new_guestbook'] ?></strong>
+              <em>새 방명록</em>
+            </a>
+          </div>
+        </section>
 
-    <section class="blog-assist__card blog-assist__card--soft">
-      <h2><?= $isOwner ? '내 블로그 관리' : '이 블로그에서' ?></h2>
-      <nav>
-        <?php if ($isOwner): ?>
-          <a href="write.php">새 글 쓰기</a>
-          <a href="blog_customize.php">꾸미기 바꾸기</a>
-          <a href="stats.php">방문 통계 보기</a>
-        <?php else: ?>
-          <a href="guestbook.php?id=<?= $ownerId ?>">방명록 보기</a>
-          <?php if ($isLogin): ?>
-            <a href="neighbors.php?tab=find">이웃 더 찾아보기</a>
-          <?php else: ?>
-            <a href="auth.php">로그인하고 이웃 맺기</a>
-          <?php endif; ?>
-          <a href="index.php">다른 글 둘러보기</a>
+        <section class="blog-assist__section">
+          <span>바로 작업</span>
+          <h2>오늘 이어서 할 일</h2>
+          <nav class="blog-assist__actions">
+            <a href="write.php">새 글 쓰기</a>
+            <?php if ($latestDraft): ?>
+              <a href="modify.php?id=<?= (int)$latestDraft['id'] ?>">임시저장 이어쓰기</a>
+            <?php else: ?>
+              <a href="<?= blogUrl(1, $ownerId, $cat, 'draft') ?>">임시저장함 보기</a>
+            <?php endif; ?>
+            <a href="notifications.php">소식 확인</a>
+            <a href="categories_manage.php">카테고리 정리</a>
+          </nav>
+        </section>
+
+        <section class="blog-assist__section">
+          <span>관리 도구</span>
+          <h2>블로그 정리</h2>
+          <nav class="blog-assist__actions blog-assist__actions--plain">
+            <a href="blog_customize.php">꾸미기 바꾸기</a>
+            <a href="stats.php">방문 통계 보기</a>
+            <a href="liked.php">좋아요한 글</a>
+            <a href="scraps.php">스크랩한 글</a>
+          </nav>
+        </section>
+
+        <?php if ($sideStats['uncategorized'] > 0 || $sideStats['draft'] > 0): ?>
+          <section class="blog-assist__section">
+            <span>정리 필요</span>
+            <div class="blog-assist__todo">
+              <?php if ($sideStats['uncategorized'] > 0): ?>
+                <a href="blog.php?id=<?= $ownerId ?>">미분류 글 <?= $sideStats['uncategorized'] ?>개 정리하기</a>
+              <?php endif; ?>
+              <?php if ($sideStats['draft'] > 0): ?>
+                <a href="<?= blogUrl(1, $ownerId, $cat, 'draft') ?>">임시저장 <?= $sideStats['draft'] ?>개 이어보기</a>
+              <?php endif; ?>
+            </div>
+          </section>
         <?php endif; ?>
-      </nav>
-    </section>
+      <?php else: ?>
+        <section class="blog-assist__section">
+          <span>인기글</span>
+          <h2>먼저 읽기 좋은 글</h2>
+          <?php if ($topPosts): ?>
+            <div class="blog-assist__posts">
+              <?php foreach ($topPosts as $i => $topPost): ?>
+                <a href="view.php?id=<?= (int)$topPost['id'] ?>">
+                  <b><?= $i + 1 ?></b>
+                  <span>
+                    <strong><?= htmlspecialchars($topPost['title']) ?></strong>
+                    <em>공감 <?= (int)$topPost['like_count'] ?> · 댓글 <?= (int)$topPost['comment_count'] ?> · 조회 <?= (int)$topPost['view_count'] ?></em>
+                  </span>
+                </a>
+              <?php endforeach; ?>
+            </div>
+          <?php else: ?>
+            <p class="blog-assist__empty">아직 추천할 공개 글이 없어요.</p>
+          <?php endif; ?>
+        </section>
+
+        <section class="blog-assist__section">
+          <span>연결하기</span>
+          <h2>이 블로그와 이어지기</h2>
+          <nav class="blog-assist__actions">
+            <a href="guestbook.php?id=<?= $ownerId ?>">방명록 남기기</a>
+            <?php if ($isLogin): ?>
+              <a href="neighbors.php?tab=find">다른 블로그 찾기</a>
+            <?php else: ?>
+              <a href="auth.php">로그인하고 이웃 맺기</a>
+            <?php endif; ?>
+            <a href="index.php?q=<?= urlencode($owner['nickname']) ?>">작성자 글 검색</a>
+          </nav>
+        </section>
+
+      <?php endif; ?>
+
+      <section class="blog-assist__section">
+        <span><?= $isOwner ? '최근 반응' : '최근 대화' ?></span>
+        <?php if ($recentComments || $recentGuestbook): ?>
+          <?php if ($recentComments): ?>
+            <div class="blog-assist__comments">
+              <?php foreach ($recentComments as $comment): ?>
+                <a href="view.php?id=<?= (int)$comment['post_id'] ?>">
+                  <strong><?= htmlspecialchars($comment['nickname']) ?> · 댓글</strong>
+                  <em><?= htmlspecialchars(mb_strimwidth($comment['content'], 0, 42, '…')) ?></em>
+                </a>
+              <?php endforeach; ?>
+            </div>
+          <?php endif; ?>
+          <?php if ($recentGuestbook): ?>
+            <div class="blog-assist__comments">
+              <?php foreach ($recentGuestbook as $guest): ?>
+                <a href="guestbook.php?id=<?= $ownerId ?>">
+                  <strong><?= htmlspecialchars($guest['nickname']) ?> · 방명록</strong>
+                  <em><?= htmlspecialchars(mb_strimwidth($guest['content'], 0, 42, '…')) ?></em>
+                </a>
+              <?php endforeach; ?>
+            </div>
+          <?php endif; ?>
+        <?php else: ?>
+          <p class="blog-assist__empty">아직 대화가 없어요.</p>
+        <?php endif; ?>
+      </section>
+
+      <?php if ($relatedBlogs): ?>
+        <section class="blog-assist__section">
+          <span>관심사 연결</span>
+          <h2>비슷한 블로그</h2>
+          <div class="blog-assist__people">
+            <?php foreach ($relatedBlogs as $related): ?>
+              <a href="blog.php?id=<?= (int)$related['id'] ?>">
+                <span class="blog-assist__avatar">
+                  <?php if (!empty($related['profile_image_stored'])): ?>
+                    <img src="../uploads/<?= htmlspecialchars($related['profile_image_stored']) ?>" alt="">
+                  <?php else: ?>
+                    <?= htmlspecialchars(mb_substr($related['nickname'], 0, 1)) ?>
+                  <?php endif; ?>
+                </span>
+                <span>
+                  <strong><?= htmlspecialchars($related['blog_title'] ?: $related['nickname'] . '님의 블로그') ?></strong>
+                  <em><?= htmlspecialchars($related['nickname']) ?> · 읽을 글 <?= (int)$related['matched_posts'] ?></em>
+                </span>
+              </a>
+            <?php endforeach; ?>
+          </div>
+        </section>
+      <?php endif; ?>
+    </div>
   </aside>
 </div>
 
