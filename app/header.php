@@ -103,7 +103,7 @@ if (isset($_SESSION['user_id'])) {
   document.documentElement.setAttribute('data-font-size', saved);
 })();
 </script>
-<link rel="stylesheet" href="../assets/css/style.css?v=20260625b">
+<link rel="stylesheet" href="../assets/css/style.css?v=20260626logo">
 </head>
 <body <?= $flashToast !== '' ? 'data-flash-toast="' . htmlspecialchars($flashToast, ENT_QUOTES) . '"' : '' ?>>
 
@@ -113,14 +113,18 @@ if (isset($_SESSION['user_id'])) {
     <span></span>
     <span></span>
   </button>
-  <a class="topbar__brand" href="index.php">BRIDGE<span>206</span></a>
+  <a class="topbar__brand" href="index.php" aria-label="BRIDGE 206 홈">
+    <img src="../assets/images/bridge206-logo.png" alt="BRIDGE 206">
+  </a>
 </header>
 
 <div class="menu-dim" data-menu-close hidden></div>
 <aside class="side-menu" id="sideMenu" aria-hidden="true" inert>
   <div class="side-menu__head">
     <div class="side-menu__kicker">BRIDGE 206</div>
-    <div class="side-menu__brand">BRIDGE<span>206</span></div>
+    <div class="side-menu__brand">
+      <img src="../assets/images/bridge206-logo.png" alt="BRIDGE 206">
+    </div>
     <p>20대와 60대를 넘어<br>모든 세대를 잇는 블로그</p>
     <div class="side-menu__stripe" aria-hidden="true">
       <span></span><span></span><span></span>

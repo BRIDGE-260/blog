@@ -17,7 +17,7 @@ $error = '';
 $uploadDir = __DIR__ . '/../uploads';
 
 $defaults = [
-    'accent_color' => '#d4af7a',
+    'accent_color' => '#294894',
     'background_color' => '#f5f6f8',
     'background_image_original' => null,
     'background_image_stored' => null,
@@ -192,8 +192,8 @@ require_once __DIR__ . '/../app/header.php';
   <?php endif; ?>
 
   <div class="customize-presets" aria-label="빠른 테마">
-    <button type="button" data-preset='{"accent_color":"#d4af7a","background_color":"#f5f6f8","profile_card_color":"#ffffff","layout_type":"standard","post_list_style":"card","thumbnail_style":"wide","font_style":"sans"}'>
-      <span style="background:#d4af7a"></span> 기본
+    <button type="button" data-preset='{"accent_color":"#294894","background_color":"#f5f6f8","profile_card_color":"#ffffff","layout_type":"standard","post_list_style":"card","thumbnail_style":"wide","font_style":"sans"}'>
+      <span style="background:#294894"></span> 로고 블루
     </button>
     <button type="button" data-preset='{"accent_color":"#8b5e34","background_color":"#f3eee7","profile_card_color":"#fffaf2","layout_type":"compact","post_list_style":"card","thumbnail_style":"square","font_style":"serif"}'>
       <span style="background:#8b5e34"></span> 감성

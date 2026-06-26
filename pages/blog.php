@@ -32,7 +32,7 @@ if (!$owner) {
 $isOwner = $ownerId === (int)$viewerId;
 
 $blogSettings = [
-    'accent_color' => '#d4af7a',
+    'accent_color' => '#294894',
     'background_color' => '#f5f6f8',
     'background_image_stored' => null,
     'background_repeat' => 'no-repeat',
@@ -91,7 +91,7 @@ function blogMutedColor($textColor) {
     return $textColor === '#ffffff' ? 'rgba(255,255,255,0.72)' : '#7f878d';
 }
 
-$blogSettings['accent_color'] = blogColor($blogSettings['accent_color'], '#d4af7a');
+$blogSettings['accent_color'] = blogColor($blogSettings['accent_color'], '#294894');
 $blogSettings['background_color'] = blogColor($blogSettings['background_color'], '#f5f6f8');
 $blogSettings['profile_card_color'] = blogColor($blogSettings['profile_card_color'], '#ffffff');
 $blogSettings['background_repeat'] = blogChoice($blogSettings['background_repeat'], ['no-repeat', 'repeat'], 'no-repeat');
