@@ -25,6 +25,8 @@ require_once __DIR__ . '/db.php';
 // 페이지가 $pageTitle 을 안 정했으면 기본값 사용
 $pageTitle = $pageTitle ?? 'BRIDGE 206';
 $pageClass = $pageClass ?? '';
+$currentPage = basename($_SERVER['SCRIPT_NAME'] ?? '');
+$isIndexPage = $currentPage === 'index.php';
 // 로그인했으면 닉네임, 아니면 null
 $loginNickname = $_SESSION['nickname'] ?? null;
 $flashToast = $_SESSION['flash_toast'] ?? '';
@@ -108,14 +110,53 @@ if (isset($_SESSION['user_id'])) {
 <body <?= $flashToast !== '' ? 'data-flash-toast="' . htmlspecialchars($flashToast, ENT_QUOTES) . '"' : '' ?>>
 
 <header class="topbar">
-  <button class="topbar__toggle" type="button" aria-label="메뉴 열기" aria-controls="sideMenu" aria-expanded="false" data-menu-open>
+  <a class="topbar__brand" href="index.php" aria-label="BRIDGE 206 home">
+    <img src="../assets/images/bridge206-logo.png" alt="BRIDGE 206">
+  </a>
+  <?php if ($isIndexPage): ?>
+    <nav class="topbar__nav" aria-label="Main shortcuts">
+      <?php if ($loginNickname): ?>
+        <a href="write.php">글쓰기</a>
+        <a href="neighbors.php">이웃</a>
+        <a class="topbar__noti" href="notifications.php">
+          소식
+          <?php if ($unreadNotifications > 0): ?>
+            <span class="topbar__badge"><?= $unreadNotifications > 99 ? '99+' : (int)$unreadNotifications ?></span>
+          <?php endif; ?>
+        </a>
+        <details class="topbar-profile">
+          <summary aria-label="내 메뉴 열기">
+            <span class="topbar__avatar">
+              <?php if (!empty($loginAvatar)): ?>
+                <img src="../uploads/<?= htmlspecialchars($loginAvatar) ?>" alt="">
+              <?php else: ?>
+                <?= htmlspecialchars(mb_substr($loginNickname, 0, 1)) ?>
+              <?php endif; ?>
+            </span>
+            <span><?= htmlspecialchars($loginNickname) ?>님</span>
+          </summary>
+          <div class="topbar-profile__menu">
+            <a href="blog.php?id=<?= (int)$_SESSION['user_id'] ?>">내 블로그</a>
+            <a href="stats.php">블로그 현황</a>
+            <a href="activity.php">내 활동</a>
+            <a href="scraps.php">스크랩</a>
+            <?php if ($loginIsAdmin): ?>
+              <a href="admin.php">관리자</a>
+            <?php endif; ?>
+            <a href="profile.php">프로필 수정</a>
+            <a href="logout.php">로그아웃</a>
+          </div>
+        </details>
+      <?php else: ?>
+        <a href="auth.php">로그인</a>
+      <?php endif; ?>
+    </nav>
+  <?php endif; ?>
+  <button class="topbar__toggle" type="button" aria-label="Open menu" aria-controls="sideMenu" aria-expanded="false" data-menu-open>
     <span></span>
     <span></span>
     <span></span>
   </button>
-  <a class="topbar__brand" href="index.php" aria-label="BRIDGE 206 홈">
-    <img src="../assets/images/bridge206-logo.png" alt="BRIDGE 206">
-  </a>
 </header>
 
 <div class="menu-dim" data-menu-close hidden></div>
@@ -126,10 +167,7 @@ if (isset($_SESSION['user_id'])) {
       <img src="../assets/images/bridge206-logo.png" alt="BRIDGE 206">
     </div>
     <p>20대와 60대를 넘어<br>모든 세대를 잇는 블로그</p>
-    <div class="side-menu__stripe" aria-hidden="true">
-      <span></span><span></span><span></span>
-    </div>
-    <button class="side-menu__close" type="button" aria-label="메뉴 닫기" data-menu-close>×</button>
+    <button class="side-menu__close" type="button" aria-label="Close menu" data-menu-close>×</button>
   </div>
 
   <nav class="side-menu__nav" aria-label="전체 메뉴">
@@ -137,6 +175,8 @@ if (isset($_SESSION['user_id'])) {
     <?php if ($loginNickname): ?>
       <a href="write.php">글쓰기</a>
       <a href="blog.php?id=<?= (int)$_SESSION['user_id'] ?>">내 블로그</a>
+      <a href="stats.php">현황</a>
+      <a href="activity.php">내 활동</a>
       <a href="neighbors.php">이웃</a>
       <?php if ($loginIsAdmin): ?>
         <a href="admin.php">관리자</a>

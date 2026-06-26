@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/comment_likes.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -59,18 +60,7 @@ function getLikeState(mysqli $conn, int $postId, int $viewerId): array {
         $stmt->close();
     }
 
-    $stmt = $conn->prepare(
-        "SELECT u.id, u.nickname
-         FROM likes l JOIN users u ON u.id = l.user_id
-         WHERE l.post_id = ?
-         ORDER BY l.created_at DESC"
-    );
-    $stmt->bind_param("i", $postId);
-    $stmt->execute();
-    $likers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-
-    return ['liked' => $liked, 'count' => $count, 'likers' => $likers];
+    return ['liked' => $liked, 'count' => $count];
 }
 
 function getCommentCount(mysqli $conn, int $postId): int {
@@ -80,6 +70,27 @@ function getCommentCount(mysqli $conn, int $postId): int {
     $count = (int)$stmt->get_result()->fetch_assoc()['cnt'];
     $stmt->close();
     return $count;
+}
+
+function getCommentLikeState(mysqli $conn, int $commentId, int $viewerId): array {
+    ensureCommentLikesTable($conn);
+
+    $stmt = $conn->prepare("SELECT COUNT(*) AS cnt FROM comment_likes WHERE comment_id = ?");
+    $stmt->bind_param("i", $commentId);
+    $stmt->execute();
+    $count = (int)$stmt->get_result()->fetch_assoc()['cnt'];
+    $stmt->close();
+
+    $liked = false;
+    if ($viewerId > 0) {
+        $stmt = $conn->prepare("SELECT id FROM comment_likes WHERE comment_id = ? AND user_id = ?");
+        $stmt->bind_param("ii", $commentId, $viewerId);
+        $stmt->execute();
+        $liked = (bool)$stmt->get_result()->fetch_assoc();
+        $stmt->close();
+    }
+
+    return ['liked' => $liked, 'count' => $count];
 }
 
 function getComment(mysqli $conn, int $commentId): ?array {
@@ -92,7 +103,12 @@ function getComment(mysqli $conn, int $commentId): ?array {
     $stmt->execute();
     $comment = $stmt->get_result()->fetch_assoc();
     $stmt->close();
-    return $comment ?: null;
+    if (!$comment) return null;
+
+    $state = getCommentLikeState($conn, $commentId, (int)($_SESSION['user_id'] ?? 0));
+    $comment['like_count'] = $state['count'];
+    $comment['liked_by_me'] = $state['liked'];
+    return $comment;
 }
 
 function getCommentInPost(mysqli $conn, int $commentId, int $postId): ?array {
@@ -105,7 +121,12 @@ function getCommentInPost(mysqli $conn, int $commentId, int $postId): ?array {
     $stmt->execute();
     $comment = $stmt->get_result()->fetch_assoc();
     $stmt->close();
-    return $comment ?: null;
+    if (!$comment) return null;
+
+    $state = getCommentLikeState($conn, $commentId, (int)($_SESSION['user_id'] ?? 0));
+    $comment['like_count'] = $state['count'];
+    $comment['liked_by_me'] = $state['liked'];
+    return $comment;
 }
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
@@ -175,6 +196,9 @@ if ($action === 'comment') {
     if ($content === '') {
         sendJson(['ok' => false, 'message' => 'empty_content'], 422);
     }
+    if (mb_strlen($content) > 500) {
+        sendJson(['ok' => false, 'message' => 'content_too_long'], 422);
+    }
 
     $parentParam = null;
     if ($parentId > 0) {
@@ -202,12 +226,46 @@ if ($action === 'comment') {
     ]);
 }
 
+if ($action === 'comment_like') {
+    ensureCommentLikesTable($conn);
+
+    $commentId = (int)($_POST['comment_id'] ?? 0);
+    $comment = getCommentInPost($conn, $commentId, $postId);
+    if (!$comment) {
+        sendJson(['ok' => false, 'message' => 'not_found'], 404);
+    }
+
+    $stmt = $conn->prepare("SELECT id FROM comment_likes WHERE comment_id = ? AND user_id = ?");
+    $stmt->bind_param("ii", $commentId, $viewerId);
+    $stmt->execute();
+    $liked = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    if ($liked) {
+        $stmt = $conn->prepare("DELETE FROM comment_likes WHERE comment_id = ? AND user_id = ?");
+    } else {
+        $stmt = $conn->prepare("INSERT IGNORE INTO comment_likes (comment_id, user_id) VALUES (?, ?)");
+    }
+    $stmt->bind_param("ii", $commentId, $viewerId);
+    $stmt->execute();
+    $stmt->close();
+
+    sendJson([
+        'ok' => true,
+        'comment_id' => $commentId,
+        'comment_like' => getCommentLikeState($conn, $commentId, $viewerId),
+    ]);
+}
+
 if ($action === 'comment_edit') {
     $commentId = (int)($_POST['comment_id'] ?? 0);
     $content = trim($_POST['content'] ?? '');
 
     if ($content === '') {
         sendJson(['ok' => false, 'message' => 'empty_content'], 422);
+    }
+    if (mb_strlen($content) > 500) {
+        sendJson(['ok' => false, 'message' => 'content_too_long'], 422);
     }
 
     $comment = getCommentInPost($conn, $commentId, $postId);

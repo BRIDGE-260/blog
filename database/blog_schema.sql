@@ -96,6 +96,26 @@ CREATE TABLE `comments` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `comment_likes`
+--
+
+DROP TABLE IF EXISTS `comment_likes`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `comment_likes` (
+  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT '댓글 좋아요 id',
+  `comment_id` int(11) NOT NULL COMMENT '좋아요한 댓글',
+  `user_id` int(11) NOT NULL COMMENT '좋아요한 회원',
+  `created_at` datetime NOT NULL DEFAULT current_timestamp() COMMENT '좋아요 시각',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_comment_likes_comment_user` (`comment_id`,`user_id`),
+  KEY `idx_comment_likes_user` (`user_id`),
+  CONSTRAINT `fk_comment_likes_comment` FOREIGN KEY (`comment_id`) REFERENCES `comments` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_comment_likes_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `guestbook`
 --
 
@@ -207,6 +227,27 @@ CREATE TABLE `post_tags` (
   KEY `idx_post_tags_tag` (`tag_id`),
   CONSTRAINT `fk_post_tags_post` FOREIGN KEY (`post_id`) REFERENCES `posts` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_post_tags_tag` FOREIGN KEY (`tag_id`) REFERENCES `tags` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `post_views`
+--
+
+DROP TABLE IF EXISTS `post_views`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `post_views` (
+  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT '최근 본 글 기록 id',
+  `user_id` int(11) NOT NULL COMMENT '글을 본 회원',
+  `post_id` int(11) NOT NULL COMMENT '본 글',
+  `viewed_at` datetime NOT NULL DEFAULT current_timestamp() COMMENT '마지막으로 본 시각',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_post_views_user_post` (`user_id`,`post_id`),
+  KEY `idx_post_views_post` (`post_id`),
+  KEY `idx_post_views_user_viewed` (`user_id`,`viewed_at`),
+  CONSTRAINT `fk_post_views_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_post_views_post` FOREIGN KEY (`post_id`) REFERENCES `posts` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

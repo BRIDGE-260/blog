@@ -25,7 +25,7 @@
   --cont-w: 940px;
   --img-w: 280px;
   --form-w: calc(var(--cont-w) - var(--img-w));
-  --cont-h: 580px;
+  --cont-h: 640px;
   --input-w: 330px;
   --radius: 8px;
   --speed: 0.85s;
@@ -229,6 +229,76 @@ input:focus {
   box-shadow: 0 2px 0 rgba(41, 72, 148, 0.18);
 }
 
+.password-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.password-field input {
+  min-width: 0;
+}
+
+.password-field button {
+  min-width: 58px;
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--accent-dark);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.password-field button:hover {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.password-meter {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.password-meter i {
+  display: block;
+  width: 100%;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5ebf4;
+}
+
+.password-meter i::before {
+  content: "";
+  display: block;
+  width: var(--strength, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--strength-color, #8792a3);
+  transition:
+    width 0.18s,
+    background 0.18s;
+}
+
+.password-meter em {
+  color: #8792a3;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.password-meter.is-good em {
+  color: var(--ok);
+}
+
 input.is-ok {
   border-bottom-color: var(--ok);
 }
@@ -257,6 +327,27 @@ input.is-bad {
 
 .check-msg.pending {
   color: var(--accent-dark);
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.check-row input {
+  width: 18px;
+  min-height: 18px;
+  accent-color: var(--accent);
+}
+
+.check-row span {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: left;
 }
 
 .submit {
@@ -480,7 +571,7 @@ input.is-bad {
 html[data-font-size="large"] {
   --cont-w: 1060px;
   --img-w: 330px;
-  --cont-h: 650px;
+  --cont-h: 730px;
   --input-w: 390px;
 }
 
@@ -549,7 +640,7 @@ html[data-font-size="large"] .img__btn {
 html[data-font-size="xlarge"] {
   --cont-w: 1180px;
   --img-w: 380px;
-  --cont-h: 760px;
+  --cont-h: 860px;
   --input-w: 470px;
 }
 

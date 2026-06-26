@@ -25,6 +25,7 @@
   var menuOpen = document.querySelector('[data-menu-open]');
   var menuCloseItems = document.querySelectorAll('[data-menu-close]');
   var fontSizeControls = document.querySelectorAll('[data-font-size-control]');
+  var profileMenu = document.querySelector('.topbar-profile');
 
   function setFontSizeMode(mode) {
     if (!/^(normal|large|xlarge)$/.test(mode)) mode = 'normal';
@@ -71,6 +72,11 @@
     item.addEventListener('click', closeSideMenu);
   });
 
+  document.addEventListener('click', function (e) {
+    if (!profileMenu || !profileMenu.open || profileMenu.contains(e.target)) return;
+    profileMenu.open = false;
+  });
+
   window.showToast = function (message, isError) {
     if (!toast || !message) return;
     toast.textContent = message;
@@ -109,6 +115,7 @@
 
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && menu && menu.classList.contains('is-open')) closeSideMenu();
+    if (e.key === 'Escape' && profileMenu && profileMenu.open) profileMenu.open = false;
     if (e.key === 'Escape' && modal && !modal.hidden) closeConfirm(false);
   });
 

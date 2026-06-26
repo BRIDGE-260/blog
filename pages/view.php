@@ -7,6 +7,8 @@
 
 session_start();
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/activity.php';
+require_once __DIR__ . '/../app/comment_likes.php';
 
 $isLogin  = isset($_SESSION['user_id']);
 $viewerId = $_SESSION['user_id'] ?? 0;   // 게스트는 0 (작성/공감/댓글은 로그인 필요)
@@ -93,6 +95,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canView && $isLogin) {
         $content  = trim($_POST['content'] ?? '');
         $parentId = (int)($_POST['parent_id'] ?? 0);
         if ($content !== '') {
+            if (mb_strlen($content) > 500) {
+                header('Location: view.php?id=' . $postId);
+                exit;
+            }
             // 답글은 1단계만 — 부모가 이 글의 "최상위" 댓글일 때만 허용
             $parentParam = null;
             if ($parentId > 0) {
@@ -114,6 +120,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canView && $isLogin) {
         $commentId = (int)($_POST['comment_id'] ?? 0);
         $content   = trim($_POST['content'] ?? '');
         if ($content !== '') {
+            if (mb_strlen($content) > 500) {
+                header('Location: view.php?id=' . $postId);
+                exit;
+            }
             $stmt = $conn->prepare("UPDATE comments SET content = ? WHERE id = ? AND user_id = ?");
             $stmt->bind_param("sii", $content, $commentId, $viewerId);
             $stmt->execute();
@@ -130,12 +140,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canView && $isLogin) {
         $stmt->close();
     }
 
+    elseif ($action === 'comment_like') {
+        ensureCommentLikesTable($conn);
+        $commentId = (int)($_POST['comment_id'] ?? 0);
+        $stmt = $conn->prepare("SELECT id FROM comments WHERE id = ? AND post_id = ?");
+        $stmt->bind_param("ii", $commentId, $postId);
+        $stmt->execute();
+        $targetComment = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if ($targetComment) {
+            $stmt = $conn->prepare("SELECT id FROM comment_likes WHERE comment_id = ? AND user_id = ?");
+            $stmt->bind_param("ii", $commentId, $viewerId);
+            $stmt->execute();
+            $liked = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+
+            if ($liked) {
+                $stmt = $conn->prepare("DELETE FROM comment_likes WHERE comment_id = ? AND user_id = ?");
+            } else {
+                $stmt = $conn->prepare("INSERT IGNORE INTO comment_likes (comment_id, user_id) VALUES (?, ?)");
+            }
+            $stmt->bind_param("ii", $commentId, $viewerId);
+            $stmt->execute();
+            $stmt->close();
+        }
+    }
+
     header('Location: view.php?id=' . $postId);
     exit;
 }
 
 // 볼 수 있는 글이면 조회수 +1 (단, 본인 글 제외 + 같은 세션에선 1회만 — 새로고침 중복 방지)
 if ($canView) {
+    ensureCommentLikesTable($conn);
+
     if (!isset($_SESSION['viewed'])) $_SESSION['viewed'] = [];
     if (!$isOwner && empty($_SESSION['viewed'][$postId])) {
         $stmt = $conn->prepare("UPDATE posts SET view_count = view_count + 1 WHERE id = ?");
@@ -145,10 +184,22 @@ if ($canView) {
         $_SESSION['viewed'][$postId] = true;
         $post['view_count'] += 1;   // 화면에 즉시 반영
     }
+
+    if ($isLogin) {
+        ensurePostViewsTable($conn);
+        $stmt = $conn->prepare(
+            "INSERT INTO post_views (user_id, post_id, viewed_at)
+             VALUES (?, ?, NOW())
+             ON DUPLICATE KEY UPDATE viewed_at = NOW()"
+        );
+        $stmt->bind_param("ii", $viewerId, $postId);
+        $stmt->execute();
+        $stmt->close();
+    }
 }
 
 // 상세 데이터 (태그 / 공감 / 댓글 / 이전·다음) — 볼 수 있을 때만 조회
-$tags = []; $images = []; $likeCount = 0; $likedByMe = false; $likers = []; $scrapped = false;
+$tags = []; $images = []; $likeCount = 0; $likedByMe = false; $scrapped = false;
 $comments = []; $parents = []; $children = []; $prev = $next = null;
 if ($canView) {
     // 태그 (id 포함 — 클릭 시 메인 태그 필터로 이동)
@@ -180,16 +231,6 @@ if ($canView) {
     $likedByMe = (bool)$stmt->get_result()->fetch_assoc();
     $stmt->close();
 
-    // 공감 누른 사람 목록 (최신순)
-    $stmt = $conn->prepare(
-        "SELECT u.id, u.nickname FROM likes l JOIN users u ON u.id = l.user_id
-         WHERE l.post_id = ? ORDER BY l.created_at DESC"
-    );
-    $stmt->bind_param("i", $postId);
-    $stmt->execute();
-    $likers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-
     // 내가 이 글을 스크랩했는지
     if ($isLogin) {
         $stmt = $conn->prepare("SELECT id FROM scraps WHERE post_id = ? AND user_id = ?");
@@ -201,11 +242,13 @@ if ($canView) {
 
     // 댓글 목록 (부모 댓글 + 답글) → parent_id 로 묶기
     $stmt = $conn->prepare(
-        "SELECT cm.id, cm.parent_id, cm.content, cm.created_at, cm.user_id, u.nickname
+        "SELECT cm.id, cm.parent_id, cm.content, cm.created_at, cm.user_id, u.nickname,
+                (SELECT COUNT(*) FROM comment_likes cl WHERE cl.comment_id = cm.id) AS like_count,
+                (SELECT COUNT(*) FROM comment_likes cl2 WHERE cl2.comment_id = cm.id AND cl2.user_id = ?) AS liked_by_me
          FROM comments cm JOIN users u ON u.id = cm.user_id
          WHERE cm.post_id = ? ORDER BY cm.created_at ASC"
     );
-    $stmt->bind_param("i", $postId);
+    $stmt->bind_param("ii", $viewerId, $postId);
     $stmt->execute();
     $comments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
@@ -337,15 +380,6 @@ require_once __DIR__ . '/../app/header.php';
       <?php endif; ?>
       <button type="button" class="like-btn" id="copyLink">🔗 링크 복사</button>
     </div>
-
-    <details class="likers" data-likers <?= $likers ? '' : 'hidden' ?>>
-        <summary data-likers-summary>공감한 사람 <?= count($likers) ?>명</summary>
-        <div class="likers__list" data-likers-list>
-          <?php foreach ($likers as $lk): ?>
-            <a href="blog.php?id=<?= (int)$lk['id'] ?>"><?= htmlspecialchars($lk['nickname']) ?>님</a>
-          <?php endforeach; ?>
-        </div>
-      </details>
   </article>
 
   <!-- 이전/다음 글 -->
@@ -380,15 +414,26 @@ require_once __DIR__ . '/../app/header.php';
             <input type="hidden" name="action" value="comment_edit">
             <input type="hidden" name="post_id" value="<?= (int)$postId ?>">
             <input type="hidden" name="comment_id" value="<?= (int)$cm['id'] ?>">
-            <textarea name="content" rows="2" required><?= htmlspecialchars($cm['content']) ?></textarea>
+            <textarea name="content" rows="2" maxlength="500" required data-comment-textarea><?= htmlspecialchars($cm['content']) ?></textarea>
+            <small class="comment-counter" data-comment-counter>0 / 500</small>
             <div class="comment__edit-actions">
               <button type="button" class="btn-ghost-dark" data-edit-cancel>취소</button>
               <button type="submit" class="btn-primary">저장</button>
             </div>
           </form>
         <?php endif; ?>
-        <?php if ($canReply || $mine): ?>
+        <?php if ($isLogin || $mine): ?>
           <div class="comment__actions">
+            <?php if ($isLogin): ?>
+              <form method="post" action="view.php?id=<?= (int)$postId ?>" class="comment__like" data-ajax-action="comment_like">
+                <input type="hidden" name="action" value="comment_like">
+                <input type="hidden" name="post_id" value="<?= (int)$postId ?>">
+                <input type="hidden" name="comment_id" value="<?= (int)$cm['id'] ?>">
+                <button type="submit" class="comment__like-btn <?= !empty($cm['liked_by_me']) ? 'on' : '' ?>" data-comment-like-btn>
+                  ♥ <?= (int)($cm['like_count'] ?? 0) ?>
+                </button>
+              </form>
+            <?php endif; ?>
             <?php if ($canReply): ?>
               <button type="button" class="comment__reply-btn" data-reply-toggle>답글</button>
             <?php endif; ?>
@@ -408,7 +453,8 @@ require_once __DIR__ . '/../app/header.php';
             <input type="hidden" name="action" value="comment">
             <input type="hidden" name="post_id" value="<?= (int)$postId ?>">
             <input type="hidden" name="parent_id" value="<?= (int)$cm['id'] ?>">
-            <textarea name="content" rows="2" placeholder="답글을 남겨보세요" required></textarea>
+            <textarea name="content" rows="2" maxlength="500" placeholder="답글을 남겨보세요" required data-comment-textarea></textarea>
+            <small class="comment-counter" data-comment-counter>0 / 500</small>
             <div class="comment__edit-actions">
               <button type="button" class="btn-ghost-dark" data-reply-cancel>취소</button>
               <button type="submit" class="btn-primary">등록</button>
@@ -438,7 +484,8 @@ require_once __DIR__ . '/../app/header.php';
       <form class="comment-form" method="post" action="view.php?id=<?= (int)$post['id'] ?>" data-ajax-action="comment">
         <input type="hidden" name="action" value="comment">
         <input type="hidden" name="post_id" value="<?= (int)$post['id'] ?>">
-        <textarea name="content" rows="3" placeholder="댓글을 남겨보세요" required></textarea>
+        <textarea name="content" rows="3" maxlength="500" placeholder="댓글을 남겨보세요" required data-comment-textarea></textarea>
+        <small class="comment-counter" data-comment-counter>0 / 500</small>
         <button type="submit" class="btn-primary">등록</button>
       </form>
     <?php else: ?>
@@ -475,6 +522,7 @@ require_once __DIR__ . '/../app/header.php';
     var ajaxStatus = document.querySelector('[data-ajax-status]');
     var messages = {
       empty_content: '내용을 입력해 주세요.',
+      content_too_long: '댓글은 500자까지 입력할 수 있어요.',
       forbidden: '처리할 권한이 없어요.',
       invalid_parent: '답글을 달 수 없는 댓글입니다.',
       invalid_post: '글 정보를 확인할 수 없어요.',
@@ -524,6 +572,27 @@ require_once __DIR__ . '/../app/header.php';
       }
     }
 
+    function updateCommentCounter(textarea) {
+      if (!textarea) return;
+      var form = textarea.closest('form');
+      var counter = form && form.querySelector('[data-comment-counter]');
+      if (!counter) return;
+      var length = Array.from(textarea.value).length;
+      counter.textContent = length + ' / 500';
+      counter.classList.toggle('is-warning', length >= 450);
+    }
+
+    function initCommentCounters(root) {
+      (root || document).querySelectorAll('[data-comment-textarea]').forEach(updateCommentCounter);
+    }
+
+    document.addEventListener('input', function (event) {
+      if (event.target.matches('[data-comment-textarea]')) {
+        updateCommentCounter(event.target);
+      }
+    });
+    initCommentCounters(document);
+
     function readJson(res) {
       return res.text().then(function (text) {
         var json = null;
@@ -548,19 +617,6 @@ require_once __DIR__ . '/../app/header.php';
 
     function updateCommentCount(count) {
       if (commentTitle) commentTitle.textContent = '댓글 ' + count;
-    }
-
-    function renderLikers(like) {
-      var box = document.querySelector('[data-likers]');
-      var summary = document.querySelector('[data-likers-summary]');
-      var list = document.querySelector('[data-likers-list]');
-      if (!box || !summary || !list) return;
-
-      box.hidden = like.count === 0;
-      summary.textContent = '공감한 사람 ' + like.count + '명';
-      list.innerHTML = like.likers.map(function (user) {
-        return '<a href="blog.php?id=' + encodeURIComponent(user.id) + '">' + escapeHtml(user.nickname) + '님</a>';
-      }).join('');
     }
 
     function closeEditForm(comment) {
@@ -676,13 +732,24 @@ require_once __DIR__ . '/../app/header.php';
         + '<input type="hidden" name="action" value="comment_edit">'
         + '<input type="hidden" name="post_id" value="' + postId + '">'
         + '<input type="hidden" name="comment_id" value="' + id + '">'
-        + '<textarea name="content" rows="2" required>' + escapeHtml(comment.content) + '</textarea>'
+        + '<textarea name="content" rows="2" maxlength="500" required data-comment-textarea>' + escapeHtml(comment.content) + '</textarea>'
+        + '<small class="comment-counter" data-comment-counter>0 / 500</small>'
         + '<div class="comment__edit-actions">'
         + '<button type="button" class="btn-ghost-dark" data-edit-cancel>취소</button>'
         + '<button type="submit" class="btn-primary">저장</button>'
         + '</div>'
         + '</form>'
         + '<div class="comment__actions">';
+
+      if (isLogin) {
+        html += ''
+          + '<form method="post" action="view.php?id=' + postId + '" class="comment__like" data-ajax-action="comment_like">'
+          + '<input type="hidden" name="action" value="comment_like">'
+          + '<input type="hidden" name="post_id" value="' + postId + '">'
+          + '<input type="hidden" name="comment_id" value="' + id + '">'
+          + '<button type="submit" class="comment__like-btn' + (comment.liked_by_me ? ' on' : '') + '" data-comment-like-btn>♥ ' + Number(comment.like_count || 0) + '</button>'
+          + '</form>';
+      }
 
       if (!isReply && isLogin) {
         html += ''
@@ -703,7 +770,8 @@ require_once __DIR__ . '/../app/header.php';
             + '<input type="hidden" name="action" value="comment">'
             + '<input type="hidden" name="post_id" value="' + postId + '">'
             + '<input type="hidden" name="parent_id" value="' + id + '">'
-            + '<textarea name="content" rows="2" placeholder="답글을 남겨보세요" required></textarea>'
+            + '<textarea name="content" rows="2" maxlength="500" placeholder="답글을 남겨보세요" required data-comment-textarea></textarea>'
+            + '<small class="comment-counter" data-comment-counter>0 / 500</small>'
             + '<div class="comment__edit-actions">'
             + '<button type="button" class="btn-ghost-dark" data-reply-cancel>취소</button>'
             + '<button type="submit" class="btn-primary">등록</button>'
@@ -732,11 +800,13 @@ require_once __DIR__ . '/../app/header.php';
           parent.insertAdjacentElement('afterend', replies);
         }
         replies.appendChild(node);
+        initCommentCounters(node);
         return;
       }
 
       var mainForm = document.querySelector('.comment-form');
       if (mainForm) mainForm.insertAdjacentElement('beforebegin', node);
+      initCommentCounters(node);
     }
 
     function removeComment(deletedId, parentId) {
@@ -783,7 +853,6 @@ require_once __DIR__ . '/../app/header.php';
             var likeBtn = document.querySelector('[data-like-btn]');
             likeBtn.textContent = '♥ 공감 ' + json.like.count;
             likeBtn.classList.toggle('on', json.like.liked);
-            renderLikers(json.like);
           } else if (form.dataset.ajaxAction === 'scrap') {
             var scrapBtn = document.querySelector('[data-scrap-btn]');
             scrapBtn.textContent = json.scrapped ? '★ 스크랩됨' : '☆ 스크랩';
@@ -807,6 +876,12 @@ require_once __DIR__ . '/../app/header.php';
             removeComment(json.deleted_id, json.parent_id);
             updateCommentCount(json.comment_count);
             showStatus('댓글을 삭제했어요.', false);
+          } else if (form.dataset.ajaxAction === 'comment_like') {
+            var likeButton = form.querySelector('[data-comment-like-btn]');
+            if (likeButton) {
+              likeButton.textContent = '♥ ' + json.comment_like.count;
+              likeButton.classList.toggle('on', json.comment_like.liked);
+            }
           }
         })
         .catch(function (err) {

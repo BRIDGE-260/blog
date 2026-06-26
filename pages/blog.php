@@ -794,7 +794,8 @@ require_once __DIR__ . '/../app/header.php';
           <h2>블로그 정리</h2>
           <nav class="blog-assist__actions blog-assist__actions--plain">
             <a href="blog_customize.php">꾸미기 바꾸기</a>
-            <a href="stats.php">방문 통계 보기</a>
+            <a href="stats.php">블로그 현황 보기</a>
+            <a href="activity.php">내 활동 보기</a>
             <a href="liked.php">좋아요한 글</a>
             <a href="scraps.php">스크랩한 글</a>
           </nav>
