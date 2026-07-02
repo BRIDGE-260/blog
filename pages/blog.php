@@ -276,7 +276,7 @@ $offset     = ($page - 1) * $perPage;
 // 글 목록
 $stmt = $conn->prepare(
     "SELECT p.id, p.title, p.content, p.view_count, p.created_at,
-            COALESCE((SELECT pi.stored FROM post_images pi WHERE pi.post_id = p.id ORDER BY pi.sort_order, pi.id LIMIT 1), p.thumbnail_stored) AS thumbnail_stored,
+            COALESCE((SELECT pi.stored FROM post_images pi WHERE pi.post_id = p.id AND pi.media_type = 'image' ORDER BY pi.sort_order, pi.id LIMIT 1), p.thumbnail_stored) AS thumbnail_stored,
             p.status, p.visibility, p.is_pinned, c.name AS category_name,
             (SELECT COUNT(*) FROM likes l    WHERE l.post_id = p.id) AS like_count,
             (SELECT COUNT(*) FROM comments m WHERE m.post_id = p.id) AS comment_count

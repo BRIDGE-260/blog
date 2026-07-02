@@ -7,8 +7,6 @@
 
 session_start();
 require_once __DIR__ . '/../app/db.php';
-require_once __DIR__ . '/../app/activity.php';
-require_once __DIR__ . '/../app/comment_likes.php';
 
 $isLogin  = isset($_SESSION['user_id']);
 $viewerId = $_SESSION['user_id'] ?? 0;   // 게스트는 0 (작성/공감/댓글은 로그인 필요)
@@ -140,41 +138,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canView && $isLogin) {
         $stmt->close();
     }
 
-    elseif ($action === 'comment_like') {
-        ensureCommentLikesTable($conn);
-        $commentId = (int)($_POST['comment_id'] ?? 0);
-        $stmt = $conn->prepare("SELECT id FROM comments WHERE id = ? AND post_id = ?");
-        $stmt->bind_param("ii", $commentId, $postId);
-        $stmt->execute();
-        $targetComment = $stmt->get_result()->fetch_assoc();
-        $stmt->close();
-
-        if ($targetComment) {
-            $stmt = $conn->prepare("SELECT id FROM comment_likes WHERE comment_id = ? AND user_id = ?");
-            $stmt->bind_param("ii", $commentId, $viewerId);
-            $stmt->execute();
-            $liked = $stmt->get_result()->fetch_assoc();
-            $stmt->close();
-
-            if ($liked) {
-                $stmt = $conn->prepare("DELETE FROM comment_likes WHERE comment_id = ? AND user_id = ?");
-            } else {
-                $stmt = $conn->prepare("INSERT IGNORE INTO comment_likes (comment_id, user_id) VALUES (?, ?)");
-            }
-            $stmt->bind_param("ii", $commentId, $viewerId);
-            $stmt->execute();
-            $stmt->close();
-        }
-    }
-
     header('Location: view.php?id=' . $postId);
     exit;
 }
 
 // 볼 수 있는 글이면 조회수 +1 (단, 본인 글 제외 + 같은 세션에선 1회만 — 새로고침 중복 방지)
 if ($canView) {
-    ensureCommentLikesTable($conn);
-
     if (!isset($_SESSION['viewed'])) $_SESSION['viewed'] = [];
     if (!$isOwner && empty($_SESSION['viewed'][$postId])) {
         $stmt = $conn->prepare("UPDATE posts SET view_count = view_count + 1 WHERE id = ?");
@@ -183,18 +152,6 @@ if ($canView) {
         $stmt->close();
         $_SESSION['viewed'][$postId] = true;
         $post['view_count'] += 1;   // 화면에 즉시 반영
-    }
-
-    if ($isLogin) {
-        ensurePostViewsTable($conn);
-        $stmt = $conn->prepare(
-            "INSERT INTO post_views (user_id, post_id, viewed_at)
-             VALUES (?, ?, NOW())
-             ON DUPLICATE KEY UPDATE viewed_at = NOW()"
-        );
-        $stmt->bind_param("ii", $viewerId, $postId);
-        $stmt->execute();
-        $stmt->close();
     }
 }
 
@@ -212,7 +169,7 @@ if ($canView) {
     $stmt->close();
 
     // 본문 이미지 (id 포함 — 본문 [[img:id]] 토큰 치환용)
-    $stmt = $conn->prepare("SELECT id, stored FROM post_images WHERE post_id = ? ORDER BY sort_order, id");
+    $stmt = $conn->prepare("SELECT id, stored, media_type FROM post_images WHERE post_id = ? ORDER BY sort_order, id");
     $stmt->bind_param("i", $postId);
     $stmt->execute();
     $images = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
@@ -242,13 +199,11 @@ if ($canView) {
 
     // 댓글 목록 (부모 댓글 + 답글) → parent_id 로 묶기
     $stmt = $conn->prepare(
-        "SELECT cm.id, cm.parent_id, cm.content, cm.created_at, cm.user_id, u.nickname,
-                (SELECT COUNT(*) FROM comment_likes cl WHERE cl.comment_id = cm.id) AS like_count,
-                (SELECT COUNT(*) FROM comment_likes cl2 WHERE cl2.comment_id = cm.id AND cl2.user_id = ?) AS liked_by_me
+        "SELECT cm.id, cm.parent_id, cm.content, cm.created_at, cm.user_id, u.nickname
          FROM comments cm JOIN users u ON u.id = cm.user_id
          WHERE cm.post_id = ? ORDER BY cm.created_at ASC"
     );
-    $stmt->bind_param("ii", $viewerId, $postId);
+    $stmt->bind_param("i", $postId);
     $stmt->execute();
     $comments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
@@ -306,6 +261,42 @@ function renderContent(string $content, array $images): array {
     return [$html, $used];
 }
 
+function renderMediaContent(string $content, array $mediaRows): array {
+    $map = [];
+    foreach ($mediaRows as $media) {
+        $map[(int)$media['id']] = $media;
+    }
+
+    $used = [];
+    $parts = preg_split('/(\[\[(?:img|video):\d+(?:\|\d+)?\]\])/', $content, -1, PREG_SPLIT_DELIM_CAPTURE);
+    $html = '';
+
+    foreach ($parts as $part) {
+        if (!preg_match('/^\[\[(img|video):(\d+)(?:\|(\d+))?\]\]$/', $part, $m)) {
+            $html .= nl2br(htmlspecialchars($part));
+            continue;
+        }
+
+        $id = (int)$m[2];
+        if (!isset($map[$id])) {
+            continue;
+        }
+
+        $used[$id] = true;
+        $mediaType = ($map[$id]['media_type'] ?? 'image') === 'video' ? 'video' : 'image';
+        $stored = htmlspecialchars($map[$id]['stored']);
+        $style = isset($m[3]) ? ' style="width:' . (int)$m[3] . '%"' : '';
+
+        if ($mediaType === 'video' || $m[1] === 'video') {
+            $html .= '<video class="post__inline-video"' . $style . ' src="../uploads/' . $stored . '" controls preload="metadata"></video>';
+        } else {
+            $html .= '<img class="post__inline-img"' . $style . ' src="../uploads/' . $stored . '" alt="">';
+        }
+    }
+
+    return [$html, $used];
+}
+
 $pageTitle = ($post && $canView ? $post['title'] : '글') . ' · BRIDGE 206';
 require_once __DIR__ . '/../app/header.php';
 ?>
@@ -338,7 +329,7 @@ require_once __DIR__ . '/../app/header.php';
       </div>
     <?php endif; ?>
 
-    <?php [$contentHtml, $usedImg] = renderContent($post['content'], $images); ?>
+    <?php [$contentHtml, $usedImg] = renderMediaContent($post['content'], $images); ?>
     <div class="post__content"><?= $contentHtml ?></div>
 
     <?php
@@ -348,7 +339,11 @@ require_once __DIR__ . '/../app/header.php';
     <?php if ($restImg): ?>
       <div class="post__gallery">
         <?php foreach ($restImg as $im): ?>
-          <img src="../uploads/<?= htmlspecialchars($im['stored']) ?>" alt="">
+          <?php if (($im['media_type'] ?? 'image') === 'video'): ?>
+            <video src="../uploads/<?= htmlspecialchars($im['stored']) ?>" controls preload="metadata"></video>
+          <?php else: ?>
+            <img src="../uploads/<?= htmlspecialchars($im['stored']) ?>" alt="">
+          <?php endif; ?>
         <?php endforeach; ?>
       </div>
     <?php endif; ?>
@@ -424,16 +419,6 @@ require_once __DIR__ . '/../app/header.php';
         <?php endif; ?>
         <?php if ($isLogin || $mine): ?>
           <div class="comment__actions">
-            <?php if ($isLogin): ?>
-              <form method="post" action="view.php?id=<?= (int)$postId ?>" class="comment__like" data-ajax-action="comment_like">
-                <input type="hidden" name="action" value="comment_like">
-                <input type="hidden" name="post_id" value="<?= (int)$postId ?>">
-                <input type="hidden" name="comment_id" value="<?= (int)$cm['id'] ?>">
-                <button type="submit" class="comment__like-btn <?= !empty($cm['liked_by_me']) ? 'on' : '' ?>" data-comment-like-btn>
-                  ♥ <?= (int)($cm['like_count'] ?? 0) ?>
-                </button>
-              </form>
-            <?php endif; ?>
             <?php if ($canReply): ?>
               <button type="button" class="comment__reply-btn" data-reply-toggle>답글</button>
             <?php endif; ?>
@@ -741,16 +726,6 @@ require_once __DIR__ . '/../app/header.php';
         + '</form>'
         + '<div class="comment__actions">';
 
-      if (isLogin) {
-        html += ''
-          + '<form method="post" action="view.php?id=' + postId + '" class="comment__like" data-ajax-action="comment_like">'
-          + '<input type="hidden" name="action" value="comment_like">'
-          + '<input type="hidden" name="post_id" value="' + postId + '">'
-          + '<input type="hidden" name="comment_id" value="' + id + '">'
-          + '<button type="submit" class="comment__like-btn' + (comment.liked_by_me ? ' on' : '') + '" data-comment-like-btn>♥ ' + Number(comment.like_count || 0) + '</button>'
-          + '</form>';
-      }
-
       if (!isReply && isLogin) {
         html += ''
           + '<button type="button" class="comment__reply-btn" data-reply-toggle>답글</button>';
@@ -876,12 +851,6 @@ require_once __DIR__ . '/../app/header.php';
             removeComment(json.deleted_id, json.parent_id);
             updateCommentCount(json.comment_count);
             showStatus('댓글을 삭제했어요.', false);
-          } else if (form.dataset.ajaxAction === 'comment_like') {
-            var likeButton = form.querySelector('[data-comment-like-btn]');
-            if (likeButton) {
-              likeButton.textContent = '♥ ' + json.comment_like.count;
-              likeButton.classList.toggle('on', json.comment_like.liked);
-            }
           }
         })
         .catch(function (err) {

@@ -31,6 +31,17 @@
   --speed: 0.85s;
 }
 
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #11151d;
+  --surface: #1a202b;
+  --text: #edf2f7;
+  --muted: #aeb8c7;
+  --line: #303948;
+  --accent: #8eb4ff;
+  --accent-dark: #c6d8ff;
+}
+
 html,
 body {
   min-height: 100%;
@@ -858,4 +869,55 @@ html[data-font-size="xlarge"] .img__btn {
   html[data-font-size="xlarge"] .img__text h2 {
     font-size: 28px;
   }
+}
+
+html[data-theme="dark"] body {
+  background: var(--bg);
+  color: var(--text);
+}
+html[data-theme="dark"] .cont,
+html[data-theme="dark"] .form,
+html[data-theme="dark"] .auth-font-tools {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--text);
+}
+html[data-theme="dark"] .auth-home {
+  color: var(--muted);
+}
+html[data-theme="dark"] .auth-home:hover {
+  color: var(--accent-dark);
+}
+html[data-theme="dark"] .auth-font-toggle,
+html[data-theme="dark"] .auth-font-tools button {
+  background: #222a37;
+  border-color: var(--line);
+  color: var(--text);
+}
+html[data-theme="dark"] .auth-font-toggle:hover,
+html[data-theme="dark"] .auth-font-toggle[aria-expanded="true"],
+html[data-theme="dark"] .auth-font-tools button.is-active {
+  background: var(--accent);
+  color: #10151d;
+}
+html[data-theme="dark"] label span,
+html[data-theme="dark"] .auth-font-tools span,
+html[data-theme="dark"] .password-meter em,
+html[data-theme="dark"] .check-row span {
+  color: var(--muted);
+}
+html[data-theme="dark"] input {
+  background: #121821;
+  border-color: var(--line);
+  color: var(--text);
+}
+html[data-theme="dark"] .password-field {
+  background: #121821;
+  border-color: var(--line);
+}
+html[data-theme="dark"] .password-field button {
+  color: var(--accent-dark);
+}
+html[data-theme="dark"] .img::before {
+  filter: brightness(0.58) saturate(0.95);
 }

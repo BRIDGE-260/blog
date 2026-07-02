@@ -24,7 +24,6 @@
   var menuDim = document.querySelector('[data-menu-close].menu-dim');
   var menuOpen = document.querySelector('[data-menu-open]');
   var menuCloseItems = document.querySelectorAll('[data-menu-close]');
-  var fontSizeControls = document.querySelectorAll('[data-font-size-control]');
   var profileMenu = document.querySelector('.topbar-profile');
 
   function setFontSizeMode(mode) {
@@ -42,6 +41,22 @@
     });
   });
   setFontSizeMode(document.documentElement.getAttribute('data-font-size') || 'normal');
+
+  function setThemeMode(mode) {
+    if (!/^(light|dark)$/.test(mode)) mode = 'light';
+    document.documentElement.setAttribute('data-theme', mode);
+    localStorage.setItem('bridge206Theme', mode);
+    document.querySelectorAll('[data-theme-option]').forEach(function (button) {
+      button.classList.toggle('is-active', button.getAttribute('data-theme-option') === mode);
+    });
+  }
+
+  document.querySelectorAll('[data-theme-option]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      setThemeMode(button.getAttribute('data-theme-option'));
+    });
+  });
+  setThemeMode(document.documentElement.getAttribute('data-theme') || 'light');
 
   function openSideMenu() {
     if (!menu || !menuDim || !menuOpen) return;

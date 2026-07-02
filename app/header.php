@@ -103,6 +103,9 @@ if (isset($_SESSION['user_id'])) {
   var saved = localStorage.getItem('bridge206FontSize') || 'normal';
   if (!/^(normal|large|xlarge)$/.test(saved)) saved = 'normal';
   document.documentElement.setAttribute('data-font-size', saved);
+  var theme = localStorage.getItem('bridge206Theme') || 'light';
+  if (!/^(light|dark)$/.test(theme)) theme = 'light';
+  document.documentElement.setAttribute('data-theme', theme);
 })();
 </script>
 <link rel="stylesheet" href="../assets/css/style.css?v=20260626logo">
@@ -210,6 +213,14 @@ if (isset($_SESSION['user_id'])) {
       <button type="button" data-font-size-option="normal">보통</button>
       <button type="button" data-font-size-option="large">크게</button>
       <button type="button" data-font-size-option="xlarge">가장 크게</button>
+    </div>
+  </section>
+
+  <section class="font-tools theme-tools" aria-label="화면 테마 설정">
+    <strong>화면 테마</strong>
+    <div class="font-tools__buttons" data-theme-control>
+      <button type="button" data-theme-option="light">라이트</button>
+      <button type="button" data-theme-option="dark">다크</button>
     </div>
   </section>
 

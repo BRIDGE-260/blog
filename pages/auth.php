@@ -117,6 +117,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   var saved = localStorage.getItem('bridge206FontSize') || 'normal';
   if (!/^(normal|large|xlarge)$/.test(saved)) saved = 'normal';
   document.documentElement.setAttribute('data-font-size', saved);
+  var theme = localStorage.getItem('bridge206Theme') || 'light';
+  if (!/^(light|dark)$/.test(theme)) theme = 'light';
+  document.documentElement.setAttribute('data-theme', theme);
 })();
 </script>
 <link rel="stylesheet" href="../assets/css/auth.css?v=20260626bridge">
@@ -134,6 +137,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <button type="button" data-font-size-option="normal">보통</button>
     <button type="button" data-font-size-option="large">크게</button>
     <button type="button" data-font-size-option="xlarge">가장 크게</button>
+  </div>
+  <span>화면 테마</span>
+  <div data-theme-control>
+    <button type="button" data-theme-option="light">라이트</button>
+    <button type="button" data-theme-option="dark">다크</button>
   </div>
 </section>
 
@@ -252,6 +260,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       });
     });
     setFontSizeMode(document.documentElement.getAttribute('data-font-size') || 'normal');
+
+    function setThemeMode(mode) {
+      if (!/^(light|dark)$/.test(mode)) mode = 'light';
+      document.documentElement.setAttribute('data-theme', mode);
+      localStorage.setItem('bridge206Theme', mode);
+      document.querySelectorAll('[data-theme-option]').forEach(function (button) {
+        button.classList.toggle('is-active', button.getAttribute('data-theme-option') === mode);
+      });
+    }
+
+    document.querySelectorAll('[data-theme-option]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        setThemeMode(button.getAttribute('data-theme-option'));
+      });
+    });
+    setThemeMode(document.documentElement.getAttribute('data-theme') || 'light');
 
     function closePanel() {
       if (!panel || !toggle) return;

@@ -21,7 +21,7 @@ $ajax     = isset($_GET['ajax']);   // 카테고리/정렬/검색 클릭 시 피
 // ── ① 이웃 새 글 (내가 이웃 추가한 사람들의 최신 글) ──
 $stmt = $conn->prepare(
     "SELECT p.id, p.title, p.created_at, u.nickname,
-            COALESCE((SELECT pi.stored FROM post_images pi WHERE pi.post_id = p.id ORDER BY pi.sort_order, pi.id LIMIT 1), p.thumbnail_stored) AS thumbnail_stored
+            COALESCE((SELECT pi.stored FROM post_images pi WHERE pi.post_id = p.id AND pi.media_type = 'image' ORDER BY pi.sort_order, pi.id LIMIT 1), p.thumbnail_stored) AS thumbnail_stored
      FROM posts p
      JOIN neighbors n ON n.neighbor_id = p.user_id AND n.user_id = ?
      JOIN users u ON u.id = p.user_id
@@ -109,7 +109,7 @@ $offset     = ($page - 1) * $perPage;
 // 글 목록
 $stmt = $conn->prepare(
     "SELECT p.id, p.title, p.content, p.view_count, p.created_at,
-            COALESCE((SELECT pi.stored FROM post_images pi WHERE pi.post_id = p.id ORDER BY pi.sort_order, pi.id LIMIT 1), p.thumbnail_stored) AS thumbnail_stored,
+            COALESCE((SELECT pi.stored FROM post_images pi WHERE pi.post_id = p.id AND pi.media_type = 'image' ORDER BY pi.sort_order, pi.id LIMIT 1), p.thumbnail_stored) AS thumbnail_stored,
             u.nickname, c.name AS category_name,
             (SELECT COUNT(*) FROM likes l    WHERE l.post_id  = p.id) AS like_count,
             (SELECT COUNT(*) FROM comments m WHERE m.post_id  = p.id) AS comment_count
@@ -152,10 +152,10 @@ function feedUrl(array $override, $q, $sort, $tagId, $cat, $page) {
 // 히어로(대표글): 공개글 중 썸네일 있는 최신 글 우선, 없으면 그냥 최신
 $hero = $conn->query(
     "SELECT p.id, p.title, u.nickname,
-            COALESCE((SELECT pi.stored FROM post_images pi WHERE pi.post_id = p.id ORDER BY pi.sort_order, pi.id LIMIT 1), p.thumbnail_stored) AS thumbnail_stored
+            COALESCE((SELECT pi.stored FROM post_images pi WHERE pi.post_id = p.id AND pi.media_type = 'image' ORDER BY pi.sort_order, pi.id LIMIT 1), p.thumbnail_stored) AS thumbnail_stored
      FROM posts p JOIN users u ON u.id = p.user_id
      WHERE p.status = 'published' AND p.visibility = 'all'
-     ORDER BY (EXISTS(SELECT 1 FROM post_images pi WHERE pi.post_id = p.id) OR p.thumbnail_stored IS NOT NULL) DESC, p.created_at DESC
+     ORDER BY (EXISTS(SELECT 1 FROM post_images pi WHERE pi.post_id = p.id AND pi.media_type = 'image') OR p.thumbnail_stored IS NOT NULL) DESC, p.created_at DESC
      LIMIT 1"
 )->fetch_assoc();
 

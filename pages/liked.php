@@ -14,7 +14,7 @@ $userId = $_SESSION['user_id'];
 
 $stmt = $conn->prepare(
     "SELECT p.id, p.title, p.content, p.view_count, p.created_at,
-            COALESCE((SELECT pi.stored FROM post_images pi WHERE pi.post_id = p.id ORDER BY pi.sort_order, pi.id LIMIT 1), p.thumbnail_stored) AS thumbnail_stored,
+            COALESCE((SELECT pi.stored FROM post_images pi WHERE pi.post_id = p.id AND pi.media_type = 'image' ORDER BY pi.sort_order, pi.id LIMIT 1), p.thumbnail_stored) AS thumbnail_stored,
             u.nickname, c.name AS category_name,
             (SELECT COUNT(*) FROM likes l2   WHERE l2.post_id = p.id) AS like_count,
             (SELECT COUNT(*) FROM comments m WHERE m.post_id  = p.id) AS comment_count
