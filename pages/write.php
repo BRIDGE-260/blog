@@ -13,6 +13,7 @@ if (!isset($_SESSION['user_id'])) {        // 로그인 검사 먼저 (header �
 }
 require_once __DIR__ . '/../app/db.php';
 require_once __DIR__ . '/../app/categories.php';
+require_once __DIR__ . '/../app/media.php';
 
 $userId = $_SESSION['user_id'];
 $error  = '';
@@ -98,35 +99,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->close();
         }
 
-        // 본문에 드래그해 넣은 [[img:newK]] 만 업로드(안 넣은 사진은 저장 안 함).
-        // 본문 등장 순서대로 sort_order 부여 → 첫 이미지가 목록 썸네일이 됨.
-        if (!empty($_FILES['images']['name'][0]) && preg_match_all('/\[\[img:new(\d+)(?:\|\d+)?\]\]/', $content, $mm)) {
-            $imgAllowed = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-            $uploadDir  = __DIR__ . '/../uploads';
-            if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
-            $order = 0;
-            $seen  = [];
-            $newContent = $content;
-            foreach ($mm[1] as $idxStr) {
-                $i = (int)$idxStr;
-                if (isset($seen[$i])) continue;     // 같은 사진 중복 방지
-                $seen[$i] = true;
-                if (!isset($_FILES['images']['name'][$i]) || $_FILES['images']['error'][$i] !== UPLOAD_ERR_OK) continue;
-                $ext = strtolower(pathinfo($_FILES['images']['name'][$i], PATHINFO_EXTENSION));
-                if (!in_array($ext, $imgAllowed, true)) continue;
-                $stored = uniqid('img_', true) . '.' . $ext;
-                if (move_uploaded_file($_FILES['images']['tmp_name'][$i], $uploadDir . '/' . $stored)) {
-                    $orig = basename($_FILES['images']['name'][$i]);
-                    $stmt = $conn->prepare("INSERT INTO post_images (post_id, original, stored, sort_order) VALUES (?,?,?,?)");
-                    $stmt->bind_param("issi", $postId, $orig, $stored, $order);
-                    $stmt->execute();
-                    $imgId = $conn->insert_id;
-                    $stmt->close();
-                    // new{i} 부분만 실제 id 로 (|너비 suffix 는 보존)
-                    $newContent = preg_replace('/\[\[img:new' . $i . '\b/', '[[img:' . $imgId, $newContent);
-                    $order++;
-                }
-            }
+        // 본문에 넣은 첨부만 저장한다. 이미지는 [[img:id]], 동영상은 [[video:id]] 토큰으로 유지.
+        [$newContent, $savedMedia] = bridge_save_inline_media($conn, $postId, $content, $_FILES['images'] ?? null, 0);
+        if ($savedMedia > 0) {
             if ($newContent !== $content) {
                 $stmt = $conn->prepare("UPDATE posts SET content = ? WHERE id = ?");
                 $stmt->bind_param("si", $newContent, $postId);
@@ -223,7 +198,7 @@ $bridgeQuestions = [
     </label>
 
     <div class="wf-content wf-editor" id="editor" contenteditable="true"
-         data-placeholder="내용을 입력하세요. 아래에서 이미지를 고른 뒤 미리보기를 본문으로 드래그하면 그 자리에 사진이 들어갑니다."><?= htmlspecialchars(preg_replace('/\[\[img:[^\]]+\]\]/', '', $content)) ?></div>
+         data-placeholder="내용을 입력하세요. 아래에서 첨부파일을 고른 뒤 미리보기를 본문으로 드래그하면 그 자리에 들어갑니다."><?= htmlspecialchars(preg_replace('/\[\[(?:img|video):[^\]]+\]\]/', '', $content)) ?></div>
     <input type="hidden" name="content" id="contentField">
 
     <div class="wf-field">
@@ -235,9 +210,9 @@ $bridgeQuestions = [
     </div>
 
     <label class="wf-field">
-      <span>본문 이미지 (파일 선택 → 아래 미리보기를 본문으로 드래그하면 그 자리에 사진이 들어갑니다 · 안 넣은 사진은 저장 안 됨)</span>
+      <span>본문 첨부 (사진/동영상 선택 → 아래 미리보기를 본문으로 드래그하면 그 자리에 들어갑니다 · 안 넣은 파일은 저장 안 됨)</span>
       <small class="wf-hint">여러 장을 한 번에 고르려면 파일 선택 창에서 Ctrl 또는 Shift를 누른 채 선택하세요.</small>
-      <input type="file" name="images[]" accept="image/*" multiple>
+      <input type="file" name="images[]" accept="image/*,video/*" multiple>
     </label>
     <div id="imgTray" class="imgtray"></div>
 
@@ -249,7 +224,7 @@ $bridgeQuestions = [
 </section>
 
 <script src="../assets/js/taginput.js?v=20260619c"></script>
-<script src="../assets/js/imageinsert.js?v=20260619d"></script>
+<script src="../assets/js/imageinsert.js?v=20260702a"></script>
 <script>
 (function () {
   var editor = document.getElementById('editor');

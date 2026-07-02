@@ -21,7 +21,7 @@ $ajax     = isset($_GET['ajax']);   // 카테고리/정렬/검색 클릭 시 피
 // ── ① 이웃 새 글 (내가 이웃 추가한 사람들의 최신 글) ──
 $stmt = $conn->prepare(
     "SELECT p.id, p.title, p.created_at, u.nickname,
-            COALESCE((SELECT pi.stored FROM post_images pi WHERE pi.post_id = p.id ORDER BY pi.sort_order, pi.id LIMIT 1), p.thumbnail_stored) AS thumbnail_stored
+            COALESCE((SELECT pi.stored FROM post_images pi WHERE pi.post_id = p.id AND pi.media_type = 'image' ORDER BY pi.sort_order, pi.id LIMIT 1), p.thumbnail_stored) AS thumbnail_stored
      FROM posts p
      JOIN neighbors n ON n.neighbor_id = p.user_id AND n.user_id = ?
      JOIN users u ON u.id = p.user_id
@@ -109,7 +109,7 @@ $offset     = ($page - 1) * $perPage;
 // 글 목록
 $stmt = $conn->prepare(
     "SELECT p.id, p.title, p.content, p.view_count, p.created_at,
-            COALESCE((SELECT pi.stored FROM post_images pi WHERE pi.post_id = p.id ORDER BY pi.sort_order, pi.id LIMIT 1), p.thumbnail_stored) AS thumbnail_stored,
+            COALESCE((SELECT pi.stored FROM post_images pi WHERE pi.post_id = p.id AND pi.media_type = 'image' ORDER BY pi.sort_order, pi.id LIMIT 1), p.thumbnail_stored) AS thumbnail_stored,
             u.nickname, c.name AS category_name,
             (SELECT COUNT(*) FROM likes l    WHERE l.post_id  = p.id) AS like_count,
             (SELECT COUNT(*) FROM comments m WHERE m.post_id  = p.id) AS comment_count
@@ -152,10 +152,10 @@ function feedUrl(array $override, $q, $sort, $tagId, $cat, $page) {
 // 히어로(대표글): 공개글 중 썸네일 있는 최신 글 우선, 없으면 그냥 최신
 $hero = $conn->query(
     "SELECT p.id, p.title, u.nickname,
-            COALESCE((SELECT pi.stored FROM post_images pi WHERE pi.post_id = p.id ORDER BY pi.sort_order, pi.id LIMIT 1), p.thumbnail_stored) AS thumbnail_stored
+            COALESCE((SELECT pi.stored FROM post_images pi WHERE pi.post_id = p.id AND pi.media_type = 'image' ORDER BY pi.sort_order, pi.id LIMIT 1), p.thumbnail_stored) AS thumbnail_stored
      FROM posts p JOIN users u ON u.id = p.user_id
      WHERE p.status = 'published' AND p.visibility = 'all'
-     ORDER BY (EXISTS(SELECT 1 FROM post_images pi WHERE pi.post_id = p.id) OR p.thumbnail_stored IS NOT NULL) DESC, p.created_at DESC
+     ORDER BY (EXISTS(SELECT 1 FROM post_images pi WHERE pi.post_id = p.id AND pi.media_type = 'image') OR p.thumbnail_stored IS NOT NULL) DESC, p.created_at DESC
      LIMIT 1"
 )->fetch_assoc();
 
@@ -190,25 +190,25 @@ if (!$ajax) {
       <span>오늘의 연결 질문</span>
       <strong>다른 세대에게 가장 물어보고 싶은 것은 무엇인가요?</strong>
     </div>
-    <div class="bridge-panel__features" aria-label="BRIDGE 206 특징">
-      <a href="#bridge-feature-reading">읽기 편한 글자 크기</a>
-      <a href="#bridge-feature-topics">세대별 관심 주제</a>
-      <a href="#bridge-feature-question">함께 묻는 연결 질문</a>
+    <div class="bridge-panel__features" aria-label="BRIDGE 206 특징" data-bridge-feature-tabs>
+      <a class="is-active" href="#bridge-feature-reading" data-feature-target="bridge-feature-reading">읽기 편한 글자 크기</a>
+      <a href="#bridge-feature-topics" data-feature-target="bridge-feature-topics">세대별 관심 주제</a>
+      <a href="#bridge-feature-question" data-feature-target="bridge-feature-question">함께 묻는 연결 질문</a>
     </div>
   </section>
 
   <section class="bridge-feature-detail" aria-label="BRIDGE 206 기능 설명">
-    <article id="bridge-feature-reading">
+    <article id="bridge-feature-reading" class="is-active" data-feature-panel>
       <span>01</span>
       <h2>읽기 편한 글자 크기</h2>
       <p>보통, 크게, 가장 크게 중 선택하면 글자뿐 아니라 버튼, 입력창, 카드 간격까지 함께 커져서 어느 세대든 편하게 읽을 수 있어요.</p>
     </article>
-    <article id="bridge-feature-topics">
+    <article id="bridge-feature-topics" data-feature-panel>
       <span>02</span>
       <h2>세대별 관심 주제</h2>
       <p>자동차, 영화, 취미, 어학처럼 세대마다 관심사가 다른 주제를 한곳에 모아 서로의 일상을 발견하도록 돕습니다.</p>
     </article>
-    <article id="bridge-feature-question">
+    <article id="bridge-feature-question" data-feature-panel>
       <span>03</span>
       <h2>함께 묻는 연결 질문</h2>
       <p>다른 세대에게 궁금한 질문을 먼저 보여주어 글쓰기와 댓글 대화가 자연스럽게 이어지도록 만든 장치입니다.</p>
@@ -238,7 +238,7 @@ if (!$ajax) {
 
 <!-- 인기글 -->
 <?php if ($isHome && $popularPosts): ?>
-  <section class="popular">
+  <section class="popular" id="popularPosts">
     <h2 class="sec-title">인기글</h2>
     <ol class="popular__list">
       <?php foreach ($popularPosts as $i => $pp): ?>
@@ -258,7 +258,7 @@ if (!$ajax) {
 
 <!-- ② 인기 태그 -->
 <?php if ($isHome && $popularTags): ?>
-  <section class="tagcloud">
+  <section class="tagcloud" id="popularTags">
     <h2 class="sec-title">인기 태그</h2>
     <div class="tagcloud__chips">
       <?php foreach ($popularTags as $t): ?>
@@ -272,7 +272,7 @@ if (!$ajax) {
 
 <!-- 카테고리(주제) 탭 — 둘러보기 바로 위 -->
 <?php if ($isHome): ?>
-<section class="category-panel" aria-label="관심 주제">
+<section class="category-panel" id="categoryPanel" aria-label="관심 주제">
   <div class="category-panel__head">
     <span>관심 주제</span>
     <strong>세대가 함께 읽는 이야기</strong>
@@ -356,6 +356,23 @@ if (!$ajax) {
 
 <script>
 (function () {
+  const featureTabs = document.querySelector('[data-bridge-feature-tabs]');
+  if (featureTabs) {
+    featureTabs.addEventListener('click', function (event) {
+      const link = event.target.closest('[data-feature-target]');
+      if (!link) return;
+      event.preventDefault();
+
+      const targetId = link.getAttribute('data-feature-target');
+      document.querySelectorAll('[data-feature-target]').forEach(function (item) {
+        item.classList.toggle('is-active', item === link);
+      });
+      document.querySelectorAll('[data-feature-panel]').forEach(function (panel) {
+        panel.classList.toggle('is-active', panel.id === targetId);
+      });
+    });
+  }
+
   const zone = document.getElementById('feedZone');
   if (!zone) return;
 

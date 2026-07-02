@@ -89,13 +89,13 @@ CREATE TABLE `comments` (
   KEY `idx_comments_post` (`post_id`),
   KEY `idx_comments_user` (`user_id`),
   KEY `idx_comments_parent` (`parent_id`),
+  KEY `idx_comments_post_parent_created` (`post_id`,`parent_id`,`created_at`,`id`),
   CONSTRAINT `fk_comments_parent` FOREIGN KEY (`parent_id`) REFERENCES `comments` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_comments_post` FOREIGN KEY (`post_id`) REFERENCES `posts` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_comments_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
---
 -- Table structure for table `guestbook`
 --
 
@@ -131,6 +131,7 @@ CREATE TABLE `likes` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_likes_post_user` (`post_id`,`user_id`),
   KEY `idx_likes_user` (`user_id`),
+  KEY `idx_likes_user_created` (`user_id`,`created_at`,`post_id`),
   CONSTRAINT `fk_likes_post` FOREIGN KEY (`post_id`) REFERENCES `posts` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_likes_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=16 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -186,9 +187,13 @@ CREATE TABLE `post_images` (
   `post_id` int(11) NOT NULL,
   `original` varchar(255) NOT NULL,
   `stored` varchar(255) NOT NULL,
+  `media_type` varchar(10) NOT NULL DEFAULT 'image',
+  `mime_type` varchar(100) DEFAULT NULL,
+  `file_size` int(10) unsigned DEFAULT NULL,
   `sort_order` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   KEY `fk_post_images_post` (`post_id`),
+  KEY `idx_post_images_post_type_order` (`post_id`,`media_type`,`sort_order`,`id`),
   CONSTRAINT `fk_post_images_post` FOREIGN KEY (`post_id`) REFERENCES `posts` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -210,7 +215,6 @@ CREATE TABLE `post_tags` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
---
 -- Table structure for table `posts`
 --
 
@@ -235,6 +239,8 @@ CREATE TABLE `posts` (
   KEY `idx_posts_user` (`user_id`),
   KEY `idx_posts_category` (`category_id`),
   KEY `idx_posts_pinned` (`user_id`,`is_pinned`,`created_at`),
+  KEY `idx_posts_public_feed` (`status`,`visibility`,`created_at`,`id`),
+  KEY `idx_posts_user_status_pinned` (`user_id`,`status`,`is_pinned`,`created_at`,`id`),
   CONSTRAINT `fk_posts_category` FOREIGN KEY (`category_id`) REFERENCES `categories` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_posts_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=19 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -255,6 +261,7 @@ CREATE TABLE `scraps` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_scraps_user_post` (`user_id`,`post_id`),
   KEY `idx_scraps_post` (`post_id`),
+  KEY `idx_scraps_user_created` (`user_id`,`created_at`,`post_id`),
   CONSTRAINT `fk_scraps_post` FOREIGN KEY (`post_id`) REFERENCES `posts` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_scraps_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

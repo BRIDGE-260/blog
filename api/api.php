@@ -59,18 +59,7 @@ function getLikeState(mysqli $conn, int $postId, int $viewerId): array {
         $stmt->close();
     }
 
-    $stmt = $conn->prepare(
-        "SELECT u.id, u.nickname
-         FROM likes l JOIN users u ON u.id = l.user_id
-         WHERE l.post_id = ?
-         ORDER BY l.created_at DESC"
-    );
-    $stmt->bind_param("i", $postId);
-    $stmt->execute();
-    $likers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-
-    return ['liked' => $liked, 'count' => $count, 'likers' => $likers];
+    return ['liked' => $liked, 'count' => $count];
 }
 
 function getCommentCount(mysqli $conn, int $postId): int {
@@ -175,6 +164,9 @@ if ($action === 'comment') {
     if ($content === '') {
         sendJson(['ok' => false, 'message' => 'empty_content'], 422);
     }
+    if (mb_strlen($content) > 500) {
+        sendJson(['ok' => false, 'message' => 'content_too_long'], 422);
+    }
 
     $parentParam = null;
     if ($parentId > 0) {
@@ -208,6 +200,9 @@ if ($action === 'comment_edit') {
 
     if ($content === '') {
         sendJson(['ok' => false, 'message' => 'empty_content'], 422);
+    }
+    if (mb_strlen($content) > 500) {
+        sendJson(['ok' => false, 'message' => 'content_too_long'], 422);
     }
 
     $comment = getCommentInPost($conn, $commentId, $postId);

@@ -4,6 +4,9 @@ require_once __DIR__ . '/../app/db.php';
 
 $error  = '';        // 화면에 보여줄 에러 메시지
 $mode   = 'login';   // 처음 열릴 때 보여줄 화면 (login / register)
+$oldName = '';
+$oldNickname = '';
+$oldEmail = '';
 
 // ============================================================
 // POST 처리 — action 값으로 로그인/회원가입 분기
@@ -18,9 +21,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $nickname = trim($_POST['nickname'] ?? '');
         $email    = trim($_POST['email']    ?? '');
         $password = $_POST['password'] ?? '';
+        $passwordConfirm = $_POST['password_confirm'] ?? '';
+        $oldName = $name;
+        $oldNickname = $nickname;
+        $oldEmail = $email;
 
-        if ($name === '' || $nickname === '' || $email === '' || $password === '') {
+        if ($name === '' || $nickname === '' || $email === '' || $password === '' || $passwordConfirm === '') {
             $error = '모든 항목을 입력해주세요.';
+        } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $error = '이메일 형식이 올바르지 않습니다.';
+        } elseif (mb_strlen($nickname) < 2 || mb_strlen($nickname) > 20) {
+            $error = '닉네임은 2자 이상 20자 이하로 입력해주세요.';
+        } elseif (!preg_match('/^[A-Za-z0-9가-힣_]+$/u', $nickname)) {
+            $error = '닉네임은 한글, 영문, 숫자, 밑줄(_)만 사용할 수 있어요.';
+        } elseif ($password !== $passwordConfirm) {
+            $error = '비밀번호 확인이 일치하지 않습니다.';
+        } elseif (strlen($password) < 8 || !preg_match('/[A-Za-z]/', $password) || !preg_match('/\d/', $password)) {
+            $error = '비밀번호는 8자 이상, 영문과 숫자를 함께 사용해주세요.';
         } else {
             // 이메일 중복 확인
             $stmt = $conn->prepare("SELECT COUNT(*) AS cnt FROM users WHERE email = ?");
@@ -100,9 +117,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   var saved = localStorage.getItem('bridge206FontSize') || 'normal';
   if (!/^(normal|large|xlarge)$/.test(saved)) saved = 'normal';
   document.documentElement.setAttribute('data-font-size', saved);
+  var theme = localStorage.getItem('bridge206Theme') || 'light';
+  if (!/^(light|dark)$/.test(theme)) theme = 'light';
+  document.documentElement.setAttribute('data-theme', theme);
 })();
 </script>
-<link rel="stylesheet" href="../assets/css/auth.css?v=20260625g">
+<link rel="stylesheet" href="../assets/css/auth.css?v=20260626bridge">
 </head>
 <body>
 
@@ -118,6 +138,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <button type="button" data-font-size-option="large">크게</button>
     <button type="button" data-font-size-option="xlarge">가장 크게</button>
   </div>
+  <span>화면 테마</span>
+  <div data-theme-control>
+    <button type="button" data-theme-option="light">라이트</button>
+    <button type="button" data-theme-option="dark">다크</button>
+  </div>
 </section>
 
 <!-- $mode 가 register 면 s--signup 클래스를 줘서 회원가입 화면이 먼저 보이게 함 -->
@@ -131,13 +156,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="error-msg"><?= htmlspecialchars($error) ?></div>
       <?php endif; ?>
       <input type="hidden" name="action" value="login">
-      <label>
-        <span>이메일</span>
-        <input type="email" name="email" required>
+        <label>
+          <span>이메일</span>
+        <input type="email" name="email" required data-login-email autocomplete="email">
       </label>
       <label>
         <span>비밀번호</span>
-        <input type="password" name="password" required>
+        <span class="password-field">
+          <input type="password" name="password" required data-password-input>
+          <button type="button" data-password-toggle>보기</button>
+        </span>
+      </label>
+      <label class="check-row">
+        <input type="checkbox" data-remember-email>
+        <span>이메일 저장</span>
       </label>
       <button type="submit" class="submit">로그인</button>
     </form>
@@ -172,21 +204,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <input type="hidden" name="action" value="register">
         <label>
           <span>이름</span>
-          <input type="text" name="name" required>
+          <input type="text" name="name" required autocomplete="name" value="<?= htmlspecialchars($oldName) ?>">
         </label>
         <label>
           <span>닉네임</span>
-          <input type="text" name="nickname" required data-duplicate-field="nickname" autocomplete="nickname">
+          <input type="text" name="nickname" required data-duplicate-field="nickname" autocomplete="nickname" value="<?= htmlspecialchars($oldNickname) ?>" minlength="2" maxlength="20" pattern="[A-Za-z0-9가-힣_]+">
           <small class="check-msg" data-check-msg="nickname"></small>
         </label>
         <label>
           <span>이메일</span>
-          <input type="email" name="email" required data-duplicate-field="email" autocomplete="email">
+          <input type="email" name="email" required data-duplicate-field="email" autocomplete="email" value="<?= htmlspecialchars($oldEmail) ?>">
           <small class="check-msg" data-check-msg="email"></small>
         </label>
         <label>
           <span>비밀번호</span>
-          <input type="password" name="password" required>
+          <span class="password-field">
+            <input type="password" name="password" required data-password-input data-password-strength>
+            <button type="button" data-password-toggle>보기</button>
+          </span>
+          <small class="password-meter" data-password-meter>
+            <i></i>
+            <em>8자 이상, 영문과 숫자를 섞으면 더 안전해요.</em>
+          </small>
+        </label>
+        <label>
+          <span>비밀번호 확인</span>
+          <span class="password-field">
+            <input type="password" name="password_confirm" required data-password-input data-password-confirm>
+            <button type="button" data-password-toggle>보기</button>
+          </span>
+          <small class="check-msg" data-password-match></small>
         </label>
         <button type="submit" class="submit">가입하기</button>
       </form>
@@ -213,6 +260,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       });
     });
     setFontSizeMode(document.documentElement.getAttribute('data-font-size') || 'normal');
+
+    function setThemeMode(mode) {
+      if (!/^(light|dark)$/.test(mode)) mode = 'light';
+      document.documentElement.setAttribute('data-theme', mode);
+      localStorage.setItem('bridge206Theme', mode);
+      document.querySelectorAll('[data-theme-option]').forEach(function (button) {
+        button.classList.toggle('is-active', button.getAttribute('data-theme-option') === mode);
+      });
+    }
+
+    document.querySelectorAll('[data-theme-option]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        setThemeMode(button.getAttribute('data-theme-option'));
+      });
+    });
+    setThemeMode(document.documentElement.getAttribute('data-theme') || 'light');
 
     function closePanel() {
       if (!panel || !toggle) return;
@@ -247,6 +310,96 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   })();
 
   // 다크 패널 가운데 버튼을 누르면 로그인 ↔ 회원가입 슬라이딩 전환
+
+  document.querySelectorAll('[data-password-toggle]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var field = button.closest('.password-field');
+      var input = field && field.querySelector('[data-password-input]');
+      if (!input) return;
+      var show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      button.textContent = show ? '숨김' : '보기';
+      input.focus();
+    });
+  });
+
+  (function () {
+    var input = document.querySelector('[data-password-strength]');
+    var meter = document.querySelector('[data-password-meter]');
+    if (!input || !meter) return;
+    var bar = meter.querySelector('i');
+    var text = meter.querySelector('em');
+
+    function updateStrength() {
+      var value = input.value;
+      var score = 0;
+      if (value.length >= 8) score++;
+      if (/[A-Za-z]/.test(value) && /\d/.test(value)) score++;
+      if (/[^A-Za-z0-9]/.test(value)) score++;
+
+      var width = ['0%', '36%', '68%', '100%'][score];
+      var color = ['#8792a3', '#ed1c24', '#f58216', '#5a9787'][score];
+      var message = [
+        '8자 이상, 영문과 숫자를 섞으면 더 안전해요.',
+        '조금 약해요. 8자 이상으로 늘려보세요.',
+        '괜찮아요. 특수문자를 더하면 더 안전해요.',
+        '안전한 비밀번호예요.'
+      ][score];
+
+      bar.style.setProperty('--strength', width);
+      bar.style.setProperty('--strength-color', color);
+      text.textContent = message;
+      meter.classList.toggle('is-good', score >= 3);
+    }
+
+    input.addEventListener('input', updateStrength);
+    updateStrength();
+  })();
+
+  (function () {
+    var password = document.querySelector('[data-password-strength]');
+    var confirm = document.querySelector('[data-password-confirm]');
+    var message = document.querySelector('[data-password-match]');
+    if (!password || !confirm || !message) return;
+
+    function updateMatch() {
+      if (confirm.value === '') {
+        message.textContent = '';
+        message.className = 'check-msg';
+        return;
+      }
+      var ok = password.value === confirm.value;
+      message.textContent = ok ? '비밀번호가 일치해요.' : '비밀번호가 서로 달라요.';
+      message.className = 'check-msg ' + (ok ? 'ok' : 'bad');
+      confirm.classList.toggle('is-ok', ok);
+      confirm.classList.toggle('is-bad', !ok);
+    }
+
+    password.addEventListener('input', updateMatch);
+    confirm.addEventListener('input', updateMatch);
+    updateMatch();
+  })();
+
+  (function () {
+    var email = document.querySelector('[data-login-email]');
+    var remember = document.querySelector('[data-remember-email]');
+    var loginForm = document.querySelector('.sign-in form');
+    if (!email || !remember || !loginForm) return;
+
+    var savedEmail = localStorage.getItem('bridge206SavedEmail') || '';
+    if (savedEmail !== '') {
+      email.value = savedEmail;
+      remember.checked = true;
+    }
+
+    loginForm.addEventListener('submit', function () {
+      if (remember.checked) {
+        localStorage.setItem('bridge206SavedEmail', email.value.trim());
+      } else {
+        localStorage.removeItem('bridge206SavedEmail');
+      }
+    });
+  })();
   document.querySelector('.img__btn').addEventListener('click', function () {
     var cont = document.querySelector('.cont');
     if (!cont) return;
@@ -333,6 +486,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     form.addEventListener('submit', function (e) {
       if (states.email === false || states.nickname === false) {
         e.preventDefault();
+        return;
+      }
+
+      var password = form.querySelector('[data-password-strength]');
+      var confirm = form.querySelector('[data-password-confirm]');
+      if (password && confirm && password.value !== confirm.value) {
+        e.preventDefault();
+        confirm.focus();
       }
     });
   })();

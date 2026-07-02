@@ -32,7 +32,7 @@ if (!$owner) {
 $isOwner = $ownerId === (int)$viewerId;
 
 $blogSettings = [
-    'accent_color' => '#d4af7a',
+    'accent_color' => '#294894',
     'background_color' => '#f5f6f8',
     'background_image_stored' => null,
     'background_repeat' => 'no-repeat',
@@ -91,7 +91,7 @@ function blogMutedColor($textColor) {
     return $textColor === '#ffffff' ? 'rgba(255,255,255,0.72)' : '#7f878d';
 }
 
-$blogSettings['accent_color'] = blogColor($blogSettings['accent_color'], '#d4af7a');
+$blogSettings['accent_color'] = blogColor($blogSettings['accent_color'], '#294894');
 $blogSettings['background_color'] = blogColor($blogSettings['background_color'], '#f5f6f8');
 $blogSettings['profile_card_color'] = blogColor($blogSettings['profile_card_color'], '#ffffff');
 $blogSettings['background_repeat'] = blogChoice($blogSettings['background_repeat'], ['no-repeat', 'repeat'], 'no-repeat');
@@ -276,7 +276,7 @@ $offset     = ($page - 1) * $perPage;
 // 글 목록
 $stmt = $conn->prepare(
     "SELECT p.id, p.title, p.content, p.view_count, p.created_at,
-            COALESCE((SELECT pi.stored FROM post_images pi WHERE pi.post_id = p.id ORDER BY pi.sort_order, pi.id LIMIT 1), p.thumbnail_stored) AS thumbnail_stored,
+            COALESCE((SELECT pi.stored FROM post_images pi WHERE pi.post_id = p.id AND pi.media_type = 'image' ORDER BY pi.sort_order, pi.id LIMIT 1), p.thumbnail_stored) AS thumbnail_stored,
             p.status, p.visibility, p.is_pinned, c.name AS category_name,
             (SELECT COUNT(*) FROM likes l    WHERE l.post_id = p.id) AS like_count,
             (SELECT COUNT(*) FROM comments m WHERE m.post_id = p.id) AS comment_count
@@ -794,7 +794,8 @@ require_once __DIR__ . '/../app/header.php';
           <h2>블로그 정리</h2>
           <nav class="blog-assist__actions blog-assist__actions--plain">
             <a href="blog_customize.php">꾸미기 바꾸기</a>
-            <a href="stats.php">방문 통계 보기</a>
+            <a href="stats.php">블로그 현황 보기</a>
+            <a href="activity.php">내 활동 보기</a>
             <a href="liked.php">좋아요한 글</a>
             <a href="scraps.php">스크랩한 글</a>
           </nav>

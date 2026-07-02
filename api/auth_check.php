@@ -14,7 +14,7 @@ $field = $_GET['field'] ?? '';
 $value = trim($_GET['value'] ?? '');
 
 if (!in_array($field, ['email', 'nickname'], true)) {
-    sendJson(['ok' => false, 'message' => '확인할 항목이 올바르지 않아요.'], 400);
+    sendJson(['ok' => false, 'message' => '확인 항목이 올바르지 않습니다.'], 400);
 }
 
 if ($value === '') {
@@ -22,7 +22,16 @@ if ($value === '') {
 }
 
 if ($field === 'email' && !filter_var($value, FILTER_VALIDATE_EMAIL)) {
-    sendJson(['ok' => true, 'available' => false, 'message' => '이메일 형식이 올바르지 않아요.']);
+    sendJson(['ok' => true, 'available' => false, 'message' => '이메일 형식이 올바르지 않습니다.']);
+}
+
+if ($field === 'nickname') {
+    if (mb_strlen($value) < 2 || mb_strlen($value) > 20) {
+        sendJson(['ok' => true, 'available' => false, 'message' => '닉네임은 2자 이상 20자 이하로 입력해주세요.']);
+    }
+    if (!preg_match('/^[A-Za-z0-9가-힣_]+$/u', $value)) {
+        sendJson(['ok' => true, 'available' => false, 'message' => '한글, 영문, 숫자, 밑줄(_)만 사용할 수 있어요.']);
+    }
 }
 
 $column = $field === 'email' ? 'email' : 'nickname';

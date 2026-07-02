@@ -93,6 +93,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canView && $isLogin) {
         $content  = trim($_POST['content'] ?? '');
         $parentId = (int)($_POST['parent_id'] ?? 0);
         if ($content !== '') {
+            if (mb_strlen($content) > 500) {
+                header('Location: view.php?id=' . $postId);
+                exit;
+            }
             // 답글은 1단계만 — 부모가 이 글의 "최상위" 댓글일 때만 허용
             $parentParam = null;
             if ($parentId > 0) {
@@ -114,6 +118,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canView && $isLogin) {
         $commentId = (int)($_POST['comment_id'] ?? 0);
         $content   = trim($_POST['content'] ?? '');
         if ($content !== '') {
+            if (mb_strlen($content) > 500) {
+                header('Location: view.php?id=' . $postId);
+                exit;
+            }
             $stmt = $conn->prepare("UPDATE comments SET content = ? WHERE id = ? AND user_id = ?");
             $stmt->bind_param("sii", $content, $commentId, $viewerId);
             $stmt->execute();
@@ -148,7 +156,7 @@ if ($canView) {
 }
 
 // 상세 데이터 (태그 / 공감 / 댓글 / 이전·다음) — 볼 수 있을 때만 조회
-$tags = []; $images = []; $likeCount = 0; $likedByMe = false; $likers = []; $scrapped = false;
+$tags = []; $images = []; $likeCount = 0; $likedByMe = false; $scrapped = false;
 $comments = []; $parents = []; $children = []; $prev = $next = null;
 if ($canView) {
     // 태그 (id 포함 — 클릭 시 메인 태그 필터로 이동)
@@ -161,7 +169,7 @@ if ($canView) {
     $stmt->close();
 
     // 본문 이미지 (id 포함 — 본문 [[img:id]] 토큰 치환용)
-    $stmt = $conn->prepare("SELECT id, stored FROM post_images WHERE post_id = ? ORDER BY sort_order, id");
+    $stmt = $conn->prepare("SELECT id, stored, media_type FROM post_images WHERE post_id = ? ORDER BY sort_order, id");
     $stmt->bind_param("i", $postId);
     $stmt->execute();
     $images = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
@@ -178,16 +186,6 @@ if ($canView) {
     $stmt->bind_param("ii", $postId, $viewerId);
     $stmt->execute();
     $likedByMe = (bool)$stmt->get_result()->fetch_assoc();
-    $stmt->close();
-
-    // 공감 누른 사람 목록 (최신순)
-    $stmt = $conn->prepare(
-        "SELECT u.id, u.nickname FROM likes l JOIN users u ON u.id = l.user_id
-         WHERE l.post_id = ? ORDER BY l.created_at DESC"
-    );
-    $stmt->bind_param("i", $postId);
-    $stmt->execute();
-    $likers = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
 
     // 내가 이 글을 스크랩했는지
@@ -263,6 +261,42 @@ function renderContent(string $content, array $images): array {
     return [$html, $used];
 }
 
+function renderMediaContent(string $content, array $mediaRows): array {
+    $map = [];
+    foreach ($mediaRows as $media) {
+        $map[(int)$media['id']] = $media;
+    }
+
+    $used = [];
+    $parts = preg_split('/(\[\[(?:img|video):\d+(?:\|\d+)?\]\])/', $content, -1, PREG_SPLIT_DELIM_CAPTURE);
+    $html = '';
+
+    foreach ($parts as $part) {
+        if (!preg_match('/^\[\[(img|video):(\d+)(?:\|(\d+))?\]\]$/', $part, $m)) {
+            $html .= nl2br(htmlspecialchars($part));
+            continue;
+        }
+
+        $id = (int)$m[2];
+        if (!isset($map[$id])) {
+            continue;
+        }
+
+        $used[$id] = true;
+        $mediaType = ($map[$id]['media_type'] ?? 'image') === 'video' ? 'video' : 'image';
+        $stored = htmlspecialchars($map[$id]['stored']);
+        $style = isset($m[3]) ? ' style="width:' . (int)$m[3] . '%"' : '';
+
+        if ($mediaType === 'video' || $m[1] === 'video') {
+            $html .= '<video class="post__inline-video"' . $style . ' src="../uploads/' . $stored . '" controls preload="metadata"></video>';
+        } else {
+            $html .= '<img class="post__inline-img"' . $style . ' src="../uploads/' . $stored . '" alt="">';
+        }
+    }
+
+    return [$html, $used];
+}
+
 $pageTitle = ($post && $canView ? $post['title'] : '글') . ' · BRIDGE 206';
 require_once __DIR__ . '/../app/header.php';
 ?>
@@ -295,7 +329,7 @@ require_once __DIR__ . '/../app/header.php';
       </div>
     <?php endif; ?>
 
-    <?php [$contentHtml, $usedImg] = renderContent($post['content'], $images); ?>
+    <?php [$contentHtml, $usedImg] = renderMediaContent($post['content'], $images); ?>
     <div class="post__content"><?= $contentHtml ?></div>
 
     <?php
@@ -305,7 +339,11 @@ require_once __DIR__ . '/../app/header.php';
     <?php if ($restImg): ?>
       <div class="post__gallery">
         <?php foreach ($restImg as $im): ?>
-          <img src="../uploads/<?= htmlspecialchars($im['stored']) ?>" alt="">
+          <?php if (($im['media_type'] ?? 'image') === 'video'): ?>
+            <video src="../uploads/<?= htmlspecialchars($im['stored']) ?>" controls preload="metadata"></video>
+          <?php else: ?>
+            <img src="../uploads/<?= htmlspecialchars($im['stored']) ?>" alt="">
+          <?php endif; ?>
         <?php endforeach; ?>
       </div>
     <?php endif; ?>
@@ -337,15 +375,6 @@ require_once __DIR__ . '/../app/header.php';
       <?php endif; ?>
       <button type="button" class="like-btn" id="copyLink">🔗 링크 복사</button>
     </div>
-
-    <details class="likers" data-likers <?= $likers ? '' : 'hidden' ?>>
-        <summary data-likers-summary>공감한 사람 <?= count($likers) ?>명</summary>
-        <div class="likers__list" data-likers-list>
-          <?php foreach ($likers as $lk): ?>
-            <a href="blog.php?id=<?= (int)$lk['id'] ?>"><?= htmlspecialchars($lk['nickname']) ?>님</a>
-          <?php endforeach; ?>
-        </div>
-      </details>
   </article>
 
   <!-- 이전/다음 글 -->
@@ -380,14 +409,15 @@ require_once __DIR__ . '/../app/header.php';
             <input type="hidden" name="action" value="comment_edit">
             <input type="hidden" name="post_id" value="<?= (int)$postId ?>">
             <input type="hidden" name="comment_id" value="<?= (int)$cm['id'] ?>">
-            <textarea name="content" rows="2" required><?= htmlspecialchars($cm['content']) ?></textarea>
+            <textarea name="content" rows="2" maxlength="500" required data-comment-textarea><?= htmlspecialchars($cm['content']) ?></textarea>
+            <small class="comment-counter" data-comment-counter>0 / 500</small>
             <div class="comment__edit-actions">
               <button type="button" class="btn-ghost-dark" data-edit-cancel>취소</button>
               <button type="submit" class="btn-primary">저장</button>
             </div>
           </form>
         <?php endif; ?>
-        <?php if ($canReply || $mine): ?>
+        <?php if ($isLogin || $mine): ?>
           <div class="comment__actions">
             <?php if ($canReply): ?>
               <button type="button" class="comment__reply-btn" data-reply-toggle>답글</button>
@@ -408,7 +438,8 @@ require_once __DIR__ . '/../app/header.php';
             <input type="hidden" name="action" value="comment">
             <input type="hidden" name="post_id" value="<?= (int)$postId ?>">
             <input type="hidden" name="parent_id" value="<?= (int)$cm['id'] ?>">
-            <textarea name="content" rows="2" placeholder="답글을 남겨보세요" required></textarea>
+            <textarea name="content" rows="2" maxlength="500" placeholder="답글을 남겨보세요" required data-comment-textarea></textarea>
+            <small class="comment-counter" data-comment-counter>0 / 500</small>
             <div class="comment__edit-actions">
               <button type="button" class="btn-ghost-dark" data-reply-cancel>취소</button>
               <button type="submit" class="btn-primary">등록</button>
@@ -438,7 +469,8 @@ require_once __DIR__ . '/../app/header.php';
       <form class="comment-form" method="post" action="view.php?id=<?= (int)$post['id'] ?>" data-ajax-action="comment">
         <input type="hidden" name="action" value="comment">
         <input type="hidden" name="post_id" value="<?= (int)$post['id'] ?>">
-        <textarea name="content" rows="3" placeholder="댓글을 남겨보세요" required></textarea>
+        <textarea name="content" rows="3" maxlength="500" placeholder="댓글을 남겨보세요" required data-comment-textarea></textarea>
+        <small class="comment-counter" data-comment-counter>0 / 500</small>
         <button type="submit" class="btn-primary">등록</button>
       </form>
     <?php else: ?>
@@ -475,6 +507,7 @@ require_once __DIR__ . '/../app/header.php';
     var ajaxStatus = document.querySelector('[data-ajax-status]');
     var messages = {
       empty_content: '내용을 입력해 주세요.',
+      content_too_long: '댓글은 500자까지 입력할 수 있어요.',
       forbidden: '처리할 권한이 없어요.',
       invalid_parent: '답글을 달 수 없는 댓글입니다.',
       invalid_post: '글 정보를 확인할 수 없어요.',
@@ -524,6 +557,27 @@ require_once __DIR__ . '/../app/header.php';
       }
     }
 
+    function updateCommentCounter(textarea) {
+      if (!textarea) return;
+      var form = textarea.closest('form');
+      var counter = form && form.querySelector('[data-comment-counter]');
+      if (!counter) return;
+      var length = Array.from(textarea.value).length;
+      counter.textContent = length + ' / 500';
+      counter.classList.toggle('is-warning', length >= 450);
+    }
+
+    function initCommentCounters(root) {
+      (root || document).querySelectorAll('[data-comment-textarea]').forEach(updateCommentCounter);
+    }
+
+    document.addEventListener('input', function (event) {
+      if (event.target.matches('[data-comment-textarea]')) {
+        updateCommentCounter(event.target);
+      }
+    });
+    initCommentCounters(document);
+
     function readJson(res) {
       return res.text().then(function (text) {
         var json = null;
@@ -548,19 +602,6 @@ require_once __DIR__ . '/../app/header.php';
 
     function updateCommentCount(count) {
       if (commentTitle) commentTitle.textContent = '댓글 ' + count;
-    }
-
-    function renderLikers(like) {
-      var box = document.querySelector('[data-likers]');
-      var summary = document.querySelector('[data-likers-summary]');
-      var list = document.querySelector('[data-likers-list]');
-      if (!box || !summary || !list) return;
-
-      box.hidden = like.count === 0;
-      summary.textContent = '공감한 사람 ' + like.count + '명';
-      list.innerHTML = like.likers.map(function (user) {
-        return '<a href="blog.php?id=' + encodeURIComponent(user.id) + '">' + escapeHtml(user.nickname) + '님</a>';
-      }).join('');
     }
 
     function closeEditForm(comment) {
@@ -676,7 +717,8 @@ require_once __DIR__ . '/../app/header.php';
         + '<input type="hidden" name="action" value="comment_edit">'
         + '<input type="hidden" name="post_id" value="' + postId + '">'
         + '<input type="hidden" name="comment_id" value="' + id + '">'
-        + '<textarea name="content" rows="2" required>' + escapeHtml(comment.content) + '</textarea>'
+        + '<textarea name="content" rows="2" maxlength="500" required data-comment-textarea>' + escapeHtml(comment.content) + '</textarea>'
+        + '<small class="comment-counter" data-comment-counter>0 / 500</small>'
         + '<div class="comment__edit-actions">'
         + '<button type="button" class="btn-ghost-dark" data-edit-cancel>취소</button>'
         + '<button type="submit" class="btn-primary">저장</button>'
@@ -703,7 +745,8 @@ require_once __DIR__ . '/../app/header.php';
             + '<input type="hidden" name="action" value="comment">'
             + '<input type="hidden" name="post_id" value="' + postId + '">'
             + '<input type="hidden" name="parent_id" value="' + id + '">'
-            + '<textarea name="content" rows="2" placeholder="답글을 남겨보세요" required></textarea>'
+            + '<textarea name="content" rows="2" maxlength="500" placeholder="답글을 남겨보세요" required data-comment-textarea></textarea>'
+            + '<small class="comment-counter" data-comment-counter>0 / 500</small>'
             + '<div class="comment__edit-actions">'
             + '<button type="button" class="btn-ghost-dark" data-reply-cancel>취소</button>'
             + '<button type="submit" class="btn-primary">등록</button>'
@@ -732,11 +775,13 @@ require_once __DIR__ . '/../app/header.php';
           parent.insertAdjacentElement('afterend', replies);
         }
         replies.appendChild(node);
+        initCommentCounters(node);
         return;
       }
 
       var mainForm = document.querySelector('.comment-form');
       if (mainForm) mainForm.insertAdjacentElement('beforebegin', node);
+      initCommentCounters(node);
     }
 
     function removeComment(deletedId, parentId) {
@@ -783,7 +828,6 @@ require_once __DIR__ . '/../app/header.php';
             var likeBtn = document.querySelector('[data-like-btn]');
             likeBtn.textContent = '♥ 공감 ' + json.like.count;
             likeBtn.classList.toggle('on', json.like.liked);
-            renderLikers(json.like);
           } else if (form.dataset.ajaxAction === 'scrap') {
             var scrapBtn = document.querySelector('[data-scrap-btn]');
             scrapBtn.textContent = json.scrapped ? '★ 스크랩됨' : '☆ 스크랩';

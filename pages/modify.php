@@ -13,6 +13,7 @@ if (!isset($_SESSION['user_id'])) {
 }
 require_once __DIR__ . '/../app/db.php';
 require_once __DIR__ . '/../app/categories.php';
+require_once __DIR__ . '/../app/media.php';
 
 $userId = $_SESSION['user_id'];
 $postId = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
@@ -56,7 +57,7 @@ $stmt->close();
 $tagInput = $tagNames ? '#' . implode(' #', $tagNames) : '';
 
 // 기존 본문 이미지 (편집기 초기 렌더용)
-$stmt = $conn->prepare("SELECT id, stored FROM post_images WHERE post_id = ? ORDER BY sort_order, id");
+$stmt = $conn->prepare("SELECT id, stored, media_type FROM post_images WHERE post_id = ? ORDER BY sort_order, id");
 $stmt->bind_param("i", $postId);
 $stmt->execute();
 $postImages = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
@@ -83,30 +84,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             : null;
         $uploadDir = __DIR__ . '/../uploads';
 
-        // 1) 본문에 새로 끼워넣은 [[img:newK]] 만 업로드 + 실제 id 로 치환
-        if (!empty($_FILES['images']['name'][0]) && preg_match_all('/\[\[img:new(\d+)(?:\|\d+)?\]\]/', $content, $mm)) {
-            $imgAllowed = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-            if (!is_dir($uploadDir)) mkdir($uploadDir, 0777, true);
-            $seen = [];
-            foreach ($mm[1] as $idxStr) {
-                $i = (int)$idxStr;
-                if (isset($seen[$i])) continue;
-                $seen[$i] = true;
-                if (!isset($_FILES['images']['name'][$i]) || $_FILES['images']['error'][$i] !== UPLOAD_ERR_OK) continue;
-                $ext = strtolower(pathinfo($_FILES['images']['name'][$i], PATHINFO_EXTENSION));
-                if (!in_array($ext, $imgAllowed, true)) continue;
-                $stored = uniqid('img_', true) . '.' . $ext;
-                if (move_uploaded_file($_FILES['images']['tmp_name'][$i], $uploadDir . '/' . $stored)) {
-                    $orig = basename($_FILES['images']['name'][$i]);
-                    $stmt = $conn->prepare("INSERT INTO post_images (post_id, original, stored, sort_order) VALUES (?,?,?,0)");
-                    $stmt->bind_param("iss", $postId, $orig, $stored);
-                    $stmt->execute();
-                    $imgId = $conn->insert_id;
-                    $stmt->close();
-                    $content = preg_replace('/\[\[img:new' . $i . '\b/', '[[img:' . $imgId, $content);
-                }
-            }
-        }
+        // 1) 본문에 새로 끼워넣은 첨부만 업로드 + 실제 id 로 치환
+        [$content, $savedMedia] = bridge_save_inline_media($conn, $postId, $content, $_FILES['images'] ?? null, 0);
 
         // 2) 글 UPDATE (썸네일 컬럼은 더 이상 안 씀)
         $stmt = $conn->prepare(
@@ -119,7 +98,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->close();
 
         // 3) 본문에 남은 이미지 id (등장 순서)
-        preg_match_all('/\[\[img:(\d+)/', $content, $rm);
+        preg_match_all('/\[\[(?:img|video):(\d+)/', $content, $rm);
         $refIds = [];
         foreach ($rm[1] as $idStr) {
             $rid = (int)$idStr;
@@ -195,6 +174,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 /** 저장된 본문([[img:id|W]] 토큰 포함)을 편집기용 HTML 로 — 토큰은 실제 <img>, 텍스트는 escape */
 function buildEditorHtml(string $content, array $images): string {
+    return buildEditorMediaHtml($content, $images);
+
     $map = [];
     foreach ($images as $im) $map[(int)$im['id']] = $im['stored'];
     $used  = [];
@@ -220,6 +201,61 @@ function buildEditorHtml(string $content, array $images): string {
                    . '" style="width:30%" src="../uploads/' . htmlspecialchars($im['stored']) . '">';
         }
     }
+    return $html;
+}
+
+function buildEditorMediaHtml(string $content, array $mediaRows): string {
+    $map = [];
+    foreach ($mediaRows as $media) {
+        $map[(int)$media['id']] = $media;
+    }
+
+    $used = [];
+    $parts = preg_split('/(\[\[(?:img|video):\d+(?:\|\d+)?\]\])/', $content, -1, PREG_SPLIT_DELIM_CAPTURE);
+    $html = '';
+
+    foreach ($parts as $part) {
+        if (!preg_match('/^\[\[(img|video):(\d+)(?:\|(\d+))?\]\]$/', $part, $m)) {
+            $html .= nl2br(htmlspecialchars($part));
+            continue;
+        }
+
+        $id = (int)$m[2];
+        if (!isset($map[$id])) {
+            continue;
+        }
+
+        $used[$id] = true;
+        $mediaType = ($map[$id]['media_type'] ?? 'image') === 'video' ? 'video' : 'image';
+        $width = isset($m[3]) ? (int)$m[3] : ($mediaType === 'video' ? 70 : 30);
+        $stored = htmlspecialchars($map[$id]['stored']);
+
+        if ($mediaType === 'video' || $m[1] === 'video') {
+            $html .= '<video class="editor-img editor-video" contenteditable="false" data-token="video:' . $id
+                   . '" style="width:' . $width . '%" src="../uploads/' . $stored . '" controls muted preload="metadata"></video>';
+        } else {
+            $html .= '<img class="editor-img" contenteditable="false" data-token="img:' . $id
+                   . '" style="width:' . $width . '%" src="../uploads/' . $stored . '">';
+        }
+    }
+
+    foreach ($mediaRows as $media) {
+        $id = (int)$media['id'];
+        if (!empty($used[$id])) {
+            continue;
+        }
+
+        $mediaType = ($media['media_type'] ?? 'image') === 'video' ? 'video' : 'image';
+        $stored = htmlspecialchars($media['stored']);
+        if ($mediaType === 'video') {
+            $html .= '<video class="editor-img editor-video" contenteditable="false" data-token="video:' . $id
+                   . '" style="width:70%" src="../uploads/' . $stored . '" controls muted preload="metadata"></video>';
+        } else {
+            $html .= '<img class="editor-img" contenteditable="false" data-token="img:' . $id
+                   . '" style="width:30%" src="../uploads/' . $stored . '">';
+        }
+    }
+
     return $html;
 }
 
@@ -268,7 +304,7 @@ require_once __DIR__ . '/../app/header.php';
     </label>
 
     <div class="wf-content wf-editor" id="editor" contenteditable="true"
-         data-placeholder="내용을 입력하세요. 아래에서 이미지를 고른 뒤 미리보기를 본문으로 드래그하면 그 자리에 사진이 들어갑니다."><?= buildEditorHtml($content, $postImages) ?></div>
+         data-placeholder="내용을 입력하세요. 아래에서 첨부파일을 고른 뒤 미리보기를 본문으로 드래그하면 그 자리에 들어갑니다."><?= buildEditorMediaHtml($content, $postImages) ?></div>
     <input type="hidden" name="content" id="contentField">
 
     <div class="wf-field">
@@ -280,9 +316,9 @@ require_once __DIR__ . '/../app/header.php';
     </div>
 
     <label class="wf-field">
-      <span>본문 이미지 (파일 선택 → 아래 미리보기를 본문으로 드래그 · 본문에서 빼면 저장 시 삭제됨)</span>
+      <span>본문 첨부 (사진/동영상 선택 → 아래 미리보기를 본문으로 드래그 · 본문에서 빼면 저장 시 삭제됨)</span>
       <small class="wf-hint">여러 장을 한 번에 고르려면 파일 선택 창에서 Ctrl 또는 Shift를 누른 채 선택하세요.</small>
-      <input type="file" name="images[]" accept="image/*" multiple>
+      <input type="file" name="images[]" accept="image/*,video/*" multiple>
     </label>
     <div id="imgTray" class="imgtray"></div>
 
@@ -295,7 +331,7 @@ require_once __DIR__ . '/../app/header.php';
 </section>
 
 <script src="../assets/js/taginput.js?v=20260619c"></script>
-<script src="../assets/js/imageinsert.js?v=20260619d"></script>
+<script src="../assets/js/imageinsert.js?v=20260702a"></script>
 
 <?php require_once __DIR__ . '/../app/footer.php'; ?>
 

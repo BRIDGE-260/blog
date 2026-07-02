@@ -156,7 +156,7 @@ require_once __DIR__ . '/../app/header.php';
     </div>
     <div class="admin-hero__note">
       <strong>읽기 전용</strong>
-      <span>현재 DB에는 관리자 권한 컬럼이 없어 위험한 삭제/수정 기능은 넣지 않았습니다.</span>
+      <span>운영 현황 확인용 화면이라 위험한 삭제/수정 기능은 넣지 않았습니다.</span>
     </div>
   </div>
 
