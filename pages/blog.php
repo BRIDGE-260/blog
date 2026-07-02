@@ -48,17 +48,34 @@ $blogSettings = [
     'post_list_style' => 'card',
     'thumbnail_style' => 'wide',
     'font_style' => 'sans',
+    'blog_mood' => 'daily',
+    'welcome_message' => null,
+    'custom_link_label' => null,
+    'custom_link_url' => null,
     'show_intro' => 1,
     'show_post_summary' => 1,
     'show_visit_count' => 1,
 ];
 
+$settingColumnResult = $conn->query("SHOW COLUMNS FROM blog_settings");
+$settingColumns = [];
+if ($settingColumnResult) {
+    foreach ($settingColumnResult->fetch_all(MYSQLI_ASSOC) as $columnRow) {
+        $settingColumns[$columnRow['Field']] = true;
+    }
+}
+$selectBlogMood = isset($settingColumns['blog_mood']) ? 'blog_mood' : "'daily' AS blog_mood";
+$selectWelcome = isset($settingColumns['welcome_message']) ? 'welcome_message' : "NULL AS welcome_message";
+$selectCustomLabel = isset($settingColumns['custom_link_label']) ? 'custom_link_label' : "NULL AS custom_link_label";
+$selectCustomUrl = isset($settingColumns['custom_link_url']) ? 'custom_link_url' : "NULL AS custom_link_url";
+
 $stmt = $conn->prepare(
     "SELECT accent_color, background_color, background_image_stored, background_repeat,
             background_position, background_size, header_image_stored, header_height,
             layout_type, title_align, sidebar_position, profile_shape, profile_card_color,
-            post_list_style, thumbnail_style, font_style, show_intro, show_post_summary,
-            show_visit_count
+            post_list_style, thumbnail_style, font_style,
+            $selectBlogMood, $selectWelcome, $selectCustomLabel, $selectCustomUrl,
+            show_intro, show_post_summary, show_visit_count
      FROM blog_settings
      WHERE user_id = ?"
 );
@@ -104,6 +121,7 @@ $blogSettings['profile_shape'] = blogChoice($blogSettings['profile_shape'], ['ci
 $blogSettings['post_list_style'] = blogChoice($blogSettings['post_list_style'], ['card', 'list'], 'card');
 $blogSettings['thumbnail_style'] = blogChoice($blogSettings['thumbnail_style'], ['wide', 'square', 'hidden'], 'wide');
 $blogSettings['font_style'] = blogChoice($blogSettings['font_style'], ['sans', 'serif', 'rounded'], 'sans');
+$blogSettings['blog_mood'] = blogChoice($blogSettings['blog_mood'], ['daily', 'studio', 'garden', 'letter', 'mono'], 'daily');
 $blogSettings['header_height'] = min(360, max(120, (int)$blogSettings['header_height']));
 
 $blogStyle = '--blog-accent:' . $blogSettings['accent_color'] . ';'
@@ -121,6 +139,7 @@ $blogClasses = [
     'blog-shell--posts-' . $blogSettings['post_list_style'],
     'blog-shell--thumb-' . $blogSettings['thumbnail_style'],
     'blog-shell--font-' . $blogSettings['font_style'],
+    'blog-shell--mood-' . $blogSettings['blog_mood'],
     'blog-shell--title-' . $blogSettings['title_align'],
 ];
 $stageClasses = [
@@ -168,6 +187,28 @@ if (!$isOwner) {
     $stmt->bind_param("i", $ownerId);
     $stmt->execute();
     $stmt->close();
+
+    $visitEventsResult = $conn->query("SHOW TABLES LIKE 'visit_events'");
+    if ($visitEventsResult && $visitEventsResult->num_rows > 0) {
+        $viewerGender = null;
+        $viewerParam = null;
+        if ($isLogin) {
+            $stmt = $conn->prepare("SELECT gender FROM users WHERE id = ?");
+            $stmt->bind_param("i", $viewerId);
+            $stmt->execute();
+            $viewerGender = $stmt->get_result()->fetch_assoc()['gender'] ?? null;
+            $stmt->close();
+            $viewerParam = (int)$viewerId;
+        }
+        $visitHour = (int)date('G');
+        $stmt = $conn->prepare(
+            "INSERT INTO visit_events (owner_id, viewer_id, visit_date, visit_hour, viewer_gender)
+             VALUES (?, ?, CURDATE(), ?, ?)"
+        );
+        $stmt->bind_param("iiis", $ownerId, $viewerParam, $visitHour, $viewerGender);
+        $stmt->execute();
+        $stmt->close();
+    }
 }
 
 // 이웃 관계(양방향) — 이웃공개 글 노출 판단용
@@ -257,12 +298,28 @@ if ($blogSearch !== '') {
     $types .= "sss";
 }
 
+$stmt = $conn->prepare(
+    "SELECT p.id, p.title, p.content, p.view_count, p.created_at,
+            c.name AS category_name,
+            (SELECT COUNT(*) FROM likes l WHERE l.post_id = p.id) AS like_count,
+            (SELECT COUNT(*) FROM comments m WHERE m.post_id = p.id) AS comment_count
+     FROM posts p
+     LEFT JOIN categories c ON c.id = p.category_id
+     WHERE $where AND p.is_pinned = 1
+     ORDER BY p.created_at DESC
+     LIMIT 4"
+);
+$stmt->bind_param($types, ...$params);
+$stmt->execute();
+$pinnedPosts = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+
 // 개수 → 페이지 수
 $stmt = $conn->prepare(
     "SELECT COUNT(*) AS cnt
      FROM posts p
      LEFT JOIN categories c ON c.id = p.category_id
-     WHERE $where"
+     WHERE $where AND p.is_pinned = 0"
 );
 $stmt->bind_param($types, ...$params);
 $stmt->execute();
@@ -282,8 +339,8 @@ $stmt = $conn->prepare(
             (SELECT COUNT(*) FROM comments m WHERE m.post_id = p.id) AS comment_count
      FROM posts p
      LEFT JOIN categories c ON c.id = p.category_id
-     WHERE $where
-     ORDER BY p.is_pinned DESC, p.created_at DESC
+     WHERE $where AND p.is_pinned = 0
+     ORDER BY p.created_at DESC
      LIMIT ? OFFSET ?"
 );
 $listParams = [...$params, $perPage, $offset];
@@ -632,6 +689,9 @@ require_once __DIR__ . '/../app/header.php';
         <?php if (!empty($owner['intro']) && (int)$blogSettings['show_intro'] === 1): ?>
           <p><?= nl2br(htmlspecialchars($owner['intro'])) ?></p>
         <?php endif; ?>
+        <?php if (!empty($blogSettings['welcome_message'])): ?>
+          <p class="blog-cover__welcome"><?= htmlspecialchars($blogSettings['welcome_message']) ?></p>
+        <?php endif; ?>
       </div>
     </section>
 
@@ -656,7 +716,25 @@ require_once __DIR__ . '/../app/header.php';
       </nav>
     <?php endif; ?>
 
-    <?php if (!$posts): ?>
+    <?php if ($pinnedPosts): ?>
+      <section class="blog-pinned" aria-label="공지글">
+        <div class="blog-pinned__head">
+          <span>공지</span>
+          <strong><?= count($pinnedPosts) ?>개의 고정 글</strong>
+        </div>
+        <div class="blog-pinned__list">
+          <?php foreach ($pinnedPosts as $pin): ?>
+            <a href="view.php?id=<?= (int)$pin['id'] ?>">
+              <b><?= htmlspecialchars($pin['title']) ?></b>
+              <span><?= htmlspecialchars(mb_strimwidth(strip_tags($pin['content']), 0, 90, '...')) ?></span>
+              <em><?= date('Y.m.d', strtotime($pin['created_at'])) ?> · 조회 <?= (int)$pin['view_count'] ?> · 공감 <?= (int)$pin['like_count'] ?> · 댓글 <?= (int)$pin['comment_count'] ?></em>
+            </a>
+          <?php endforeach; ?>
+        </div>
+      </section>
+    <?php endif; ?>
+
+    <?php if (!$posts && !$pinnedPosts): ?>
       <div class="blog-empty">
         <span>BRIDGE 206</span>
         <h2><?= htmlspecialchars($emptyTitle) ?></h2>
@@ -849,6 +927,16 @@ require_once __DIR__ . '/../app/header.php';
           </nav>
         </section>
 
+      <?php endif; ?>
+
+      <?php if (!empty($blogSettings['custom_link_label']) && !empty($blogSettings['custom_link_url'])): ?>
+        <section class="blog-assist__section">
+          <span>바로가기</span>
+          <h2>블로그 주인 추천 링크</h2>
+          <nav class="blog-assist__actions">
+            <a href="<?= htmlspecialchars($blogSettings['custom_link_url']) ?>" target="_blank" rel="noopener noreferrer"><?= htmlspecialchars($blogSettings['custom_link_label']) ?></a>
+          </nav>
+        </section>
       <?php endif; ?>
 
       <section class="blog-assist__section">

@@ -14,6 +14,9 @@ require_once __DIR__ . '/../app/db.php';
 
 $viewerId = $_SESSION['user_id'];
 $tab = ($_GET['tab'] ?? '') === 'find' ? 'find' : 'neighbors';
+$lastSeenColumnResult = $conn->query("SHOW COLUMNS FROM users LIKE 'last_seen_at'");
+$hasLastSeenColumn = $lastSeenColumnResult && $lastSeenColumnResult->num_rows > 0;
+$lastSeenSelect = $hasLastSeenColumn ? "u.last_seen_at" : "NULL AS last_seen_at";
 
 // ── POST: 이웃 추가/취소 ───────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -69,7 +72,8 @@ if ($tab === 'neighbors') {
     // ① 내 이웃 (서로이웃 여부 mutual 포함)
     $stmt = $conn->prepare(
         "SELECT u.id, u.nickname, u.blog_title, u.profile_image_stored,
-                EXISTS(SELECT 1 FROM neighbors r WHERE r.user_id = u.id AND r.neighbor_id = ?) AS mutual
+                EXISTS(SELECT 1 FROM neighbors r WHERE r.user_id = u.id AND r.neighbor_id = ?) AS mutual,
+                $lastSeenSelect
          FROM neighbors n
          JOIN users u ON u.id = n.neighbor_id
          WHERE n.user_id = ?
@@ -82,7 +86,7 @@ if ($tab === 'neighbors') {
 
     // ② 나를 추가했지만 내가 아직 안 추가한 사람
     $stmt = $conn->prepare(
-        "SELECT u.id, u.nickname, u.blog_title, u.profile_image_stored
+        "SELECT u.id, u.nickname, u.blog_title, u.profile_image_stored, $lastSeenSelect
          FROM neighbors n
          JOIN users u ON u.id = n.user_id
          WHERE n.neighbor_id = ?
@@ -127,6 +131,7 @@ if ($tab === 'neighbors') {
                    (SELECT p3.title FROM posts p3
                     WHERE p3.user_id = u.id AND p3.status='published' AND p3.visibility='all'
                     ORDER BY p3.created_at DESC LIMIT 1) AS latest_title,
+                   $lastSeenSelect,
                    EXISTS(SELECT 1 FROM neighbors n WHERE n.user_id = ? AND n.neighbor_id = u.id) AS is_neighbor
             FROM users u
             WHERE u.id <> ?";
@@ -178,6 +183,7 @@ function userCard($u, $action, $label, $class, $opts = []) {
     $title = $u['blog_title'] ?: $u['nickname'] . '님의 블로그';
     $nick  = htmlspecialchars($u['nickname']);
     if (!empty($opts['meta'])) $nick .= ' · ' . htmlspecialchars($opts['meta']);
+    $online = !empty($u['last_seen_at']) && strtotime($u['last_seen_at']) >= time() - 300;
     ?>
     <div class="nbr">
       <a class="nbr__main" href="blog.php?id=<?= (int)$u['id'] ?>">
@@ -185,6 +191,7 @@ function userCard($u, $action, $label, $class, $opts = []) {
         <div class="nbr__text">
           <div class="nbr__title"><?= htmlspecialchars($title) ?>
             <?php if (!empty($opts['mutual'])): ?><em class="nbr__mutual">서로이웃</em><?php endif; ?>
+            <em class="nbr__online <?= $online ? 'is-on' : '' ?>"><?= $online ? '접속 중' : '오프라인' ?></em>
           </div>
           <div class="nbr__nick"><?= $nick ?></div>
           <?php if (!empty($opts['latest']) || !empty($opts['shared'])): ?>
@@ -203,6 +210,7 @@ function userCard($u, $action, $label, $class, $opts = []) {
         <input type="hidden" name="rsort"   value="<?= htmlspecialchars($opts['rsort'] ?? '') ?>">
         <button type="submit" class="<?= $class ?>"><?= $label ?></button>
       </form>
+      <a class="btn-ghost-dark nbr__message" href="messages.php?to=<?= (int)$u['id'] ?>">쪽지</a>
     </div>
     <?php
 }

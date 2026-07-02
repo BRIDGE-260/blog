@@ -49,7 +49,7 @@ database/blog_schema.sql
 database/blog_sample_data.sql
 ```
 
-현재 실제 DB 기준 테이블은 14개입니다. 단, 테이블 수 자체를 목표로 맞추지 않고 단순성/성능/유지보수성이 더 중요하면 증감할 수 있습니다.
+현재 실제 DB 기준 테이블은 18개입니다. 단, 테이블 수 자체를 목표로 맞추지 않고 단순성/성능/유지보수성이 더 중요하면 증감할 수 있습니다.
 
 1. `users` - 회원 정보. 이메일/닉네임 unique, 프로필 이미지, 블로그 제목/소개, `is_admin`, 소식 확인 시각 포함.
 2. `blog_settings` - 블로그 꾸미기 설정. 회원 1명당 1행, 회원 삭제 시 CASCADE.
@@ -65,6 +65,10 @@ database/blog_sample_data.sql
 12. `scraps` - 스크랩/북마크. `UNIQUE(user_id, post_id)`.
 13. `guestbook` - 블로그별 방명록.
 14. `notification_reads` - 내 소식 항목별 읽음 처리.
+15. `messages` - 이웃 간 쪽지.
+16. `visit_events` - 시간대/성별 방문 통계 이벤트.
+17. `site_settings` - 사이트 공지와 메인 소개 문구 설정.
+18. `moderation_logs` - 관리자 운영 조치 기록.
 
 관리자 권한은 별도 테이블이 아니라 `users.is_admin` 컬럼으로 관리합니다. 기존 DB에 컬럼이 없으면 `database/add_admin_role.sql`을 실행합니다.
 
@@ -163,7 +167,8 @@ database/blog_sample_data.sql
 - `pages/notifications.php` - 내 소식
 - `pages/activity.php` - 내가 댓글 단 글, 공감한 글, 스크랩한 글 모아보기
 - `pages/stats.php` - 블로그 현황
-- `pages/admin.php` - 관리자 대시보드, 읽기 전용 운영 현황
+- `pages/admin.php` - 관리자 대시보드, 회원/글 권한과 사이트 설정
+- `pages/messages.php` - 이웃 쪽지
 - `pages/categories_manage.php` - 카테고리 관리
 - `pages/scraps.php` - 스크랩한 글 모아보기
 - `pages/liked.php` - 공감한 글 모아보기
@@ -173,7 +178,7 @@ database/blog_sample_data.sql
 - `pages/withdraw.php` - 회원 탈퇴
 - `api/api.php` - 공감/스크랩/댓글 AJAX 엔드포인트
 - `api/notification_read.php` - 소식 항목별 읽음 처리
-- `database/blog_schema.sql` - 14개 테이블 schema
+- `database/blog_schema.sql` - 18개 테이블 schema
 - `database/blog_sample_data.sql` - 샘플 데이터
 - `database/add_admin_role.sql` - 기존 DB용 관리자 권한 컬럼 추가
 
@@ -207,14 +212,19 @@ database/blog_sample_data.sql
 - 내 소식 항목별 읽음 처리
 - 이웃 새 글 알림
 - 관리자 대시보드
+- 이웃 접속 중 표시와 쪽지
+- 이웃 새 글만 보기
+- 시간대/성별 방문 통계와 엑셀 다운로드
+- 관리자 회원/글 권한 및 사이트 설정 관리
+- 관리자 회원 밴/해제, 글/댓글 강제 삭제, 운영 로그
 - 내 활동 모아보기
 - 다크 모드
 
 ## 남은 후보
 
 - 다크 모드는 구현됐으므로 제출 전 실제 브라우저에서 주요 화면 색 대비와 버튼 가독성을 점검합니다.
-- 관리자 페이지는 현재 읽기 전용입니다. 삭제/수정 같은 위험한 운영 기능은 교수님 요구가 있을 때만 추가합니다.
-- 댓글 좋아요는 현재 14개 테이블 기준에서 제외합니다. 구현하려면 새 테이블 추가 여부를 먼저 결정해야 합니다.
+- 관리자 페이지는 회원/글 권한, 회원 밴, 글/댓글 강제 삭제, 사이트 설정, 운영 로그를 다룹니다.
+- 댓글 좋아요는 현재 18개 테이블 기준에서 제외합니다. 구현하려면 새 테이블 추가 여부를 먼저 결정해야 합니다.
 
 ## 작업 환경 메모
 

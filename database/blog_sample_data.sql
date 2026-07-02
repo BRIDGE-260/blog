@@ -13,6 +13,8 @@
 -- Use DELETE instead of TRUNCATE because TRUNCATE can fail on FK-referenced tables.
 DELETE FROM `guestbook`;
 DELETE FROM `blog_settings`;
+DELETE FROM `moderation_logs`;
+DELETE FROM `messages`;
 DELETE FROM `notification_reads`;
 DELETE FROM `scraps`;
 DELETE FROM `post_images`;
@@ -20,19 +22,24 @@ DELETE FROM `post_tags`;
 DELETE FROM `comments`;
 DELETE FROM `likes`;
 DELETE FROM `neighbors`;
+DELETE FROM `visit_events`;
 DELETE FROM `visit_logs`;
+DELETE FROM `site_settings`;
 DELETE FROM `posts`;
 DELETE FROM `tags`;
 DELETE FROM `categories`;
 DELETE FROM `users`;
 
 ALTER TABLE `guestbook` AUTO_INCREMENT=1;
+ALTER TABLE `moderation_logs` AUTO_INCREMENT=1;
+ALTER TABLE `messages` AUTO_INCREMENT=1;
 ALTER TABLE `notification_reads` AUTO_INCREMENT=1;
 ALTER TABLE `scraps` AUTO_INCREMENT=1;
 ALTER TABLE `post_images` AUTO_INCREMENT=1;
 ALTER TABLE `comments` AUTO_INCREMENT=1;
 ALTER TABLE `likes` AUTO_INCREMENT=1;
 ALTER TABLE `neighbors` AUTO_INCREMENT=1;
+ALTER TABLE `visit_events` AUTO_INCREMENT=1;
 ALTER TABLE `visit_logs` AUTO_INCREMENT=1;
 ALTER TABLE `posts` AUTO_INCREMENT=1;
 ALTER TABLE `tags` AUTO_INCREMENT=1;
@@ -49,6 +56,14 @@ INSERT INTO `users`
 (6, 'junho@blog.com', '$2y$10$fJOYLABiJDTvNuwWtluzr.XDSwkZplqwi1lScH9mMXldAMyG/9Zvm', '최준호', 'jun_photo', '남성', '준호의 사진첩', '동네 산책 사진과 책에서 만난 문장을 같이 모읍니다.', 'profile_junho.png', 'sample_profile_06.png', '2026-06-03 16:47:00', '2026-06-12 22:00:00');
 
 UPDATE `users` SET `is_admin` = 1 WHERE `id` = 1 LIMIT 1;
+UPDATE `users` SET `last_seen_at` = NOW() WHERE `id` IN (1, 2);
+UPDATE `users` SET `last_seen_at` = NOW() - INTERVAL 20 MINUTE WHERE `id` IN (3, 4);
+
+INSERT INTO `site_settings` (`setting_key`, `setting_value`) VALUES
+('site_notice', ''),
+('main_feature_title', '20대와 60대에서 시작해, 모든 세대를 잇는 블로그'),
+('main_feature_text', '읽기 편한 글자 크기와 세대가 함께 나눌 수 있는 이야기로 서로의 일상을 연결합니다.'),
+('allow_public_join', '1');
 
 INSERT INTO `blog_settings`
 (`user_id`, `accent_color`, `background_color`, `background_image_original`, `background_image_stored`, `background_repeat`, `background_position`, `background_size`, `header_image_original`, `header_image_stored`, `header_height`, `layout_type`, `title_align`, `sidebar_position`, `profile_shape`, `profile_card_color`, `post_list_style`, `thumbnail_style`, `font_style`, `show_intro`, `show_post_summary`, `show_visit_count`, `created_at`, `updated_at`) VALUES
@@ -291,6 +306,11 @@ INSERT INTO `scraps` (`id`, `user_id`, `post_id`, `created_at`) VALUES
 (11, 6, 3, '2026-06-08 13:10:00'),
 (12, 6, 13, '2026-06-07 13:20:00');
 
+INSERT INTO `messages` (`id`, `sender_id`, `receiver_id`, `content`, `is_read`, `created_at`) VALUES
+(1, 2, 1, '이번 주 플레이리스트 글 좋았어요. 다음 글도 기대할게요.', 0, '2026-06-18 10:10:00'),
+(2, 1, 2, '고마워요. mysqli 정리 글도 잘 읽었습니다.', 1, '2026-06-18 10:25:00'),
+(3, 3, 5, '카페 후보 글 올라오면 알려주세요.', 0, '2026-06-18 11:00:00');
+
 INSERT INTO `guestbook` (`id`, `owner_id`, `user_id`, `content`, `created_at`) VALUES
 (1, 1, 3, '음악 추천 글 잘 보고 있어요. 다음에도 플레이리스트 기대할게요.', '2026-06-06 11:30:00'),
 (2, 1, 4, '블로그 분위기가 앨범 커버처럼 차분해서 좋아요.', '2026-06-08 22:10:00'),
@@ -362,6 +382,17 @@ INSERT INTO `visit_logs` (`id`, `user_id`, `visit_date`, `count`) VALUES
 (58, 6, '2026-06-16', 31),
 (59, 6, '2026-06-17', 29),
 (60, 6, '2026-06-18', 33);
+
+INSERT INTO `visit_events` (`owner_id`, `viewer_id`, `visit_date`, `visit_hour`, `viewer_gender`, `created_at`) VALUES
+(1, 2, CURDATE(), 9, '여성', NOW()),
+(1, 3, CURDATE(), 12, '여성', NOW()),
+(1, 4, CURDATE(), 21, '남성', NOW()),
+(2, 1, CURDATE(), 10, '남성', NOW()),
+(2, 6, CURDATE(), 15, '남성', NOW()),
+(3, 1, CURDATE(), 8, '남성', NOW()),
+(3, 5, CURDATE(), 19, '여성', NOW()),
+(5, 3, CURDATE(), 13, '여성', NOW()),
+(6, 2, CURDATE(), 22, '여성', NOW());
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
 /*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;

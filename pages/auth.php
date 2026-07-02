@@ -2,11 +2,21 @@
 session_start();
 require_once __DIR__ . '/../app/db.php';
 
-$error  = '';        // 화면에 보여줄 에러 메시지
+$error  = (($_GET['banned'] ?? '') === '1') ? '관리자에 의해 이용이 제한된 계정입니다.' : '';        // 화면에 보여줄 에러 메시지
 $mode   = 'login';   // 처음 열릴 때 보여줄 화면 (login / register)
 $oldName = '';
 $oldNickname = '';
 $oldEmail = '';
+$allowPublicJoin = true;
+$siteSettingsResult = $conn->query("SHOW TABLES LIKE 'site_settings'");
+if ($siteSettingsResult && $siteSettingsResult->num_rows > 0) {
+    $stmt = $conn->prepare("SELECT setting_value FROM site_settings WHERE setting_key = 'allow_public_join'");
+    $stmt->execute();
+    $allowPublicJoin = (($stmt->get_result()->fetch_assoc()['setting_value'] ?? '1') === '1');
+    $stmt->close();
+}
+$banColumnResult = $conn->query("SHOW COLUMNS FROM users LIKE 'is_banned'");
+$hasBanColumn = $banColumnResult && $banColumnResult->num_rows > 0;
 
 // ============================================================
 // POST 처리 — action 값으로 로그인/회원가입 분기
@@ -26,7 +36,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $oldNickname = $nickname;
         $oldEmail = $email;
 
-        if ($name === '' || $nickname === '' || $email === '' || $password === '' || $passwordConfirm === '') {
+        if (!$allowPublicJoin) {
+            $error = '현재는 관리자 설정으로 신규 회원가입이 닫혀 있습니다.';
+        } elseif ($name === '' || $nickname === '' || $email === '' || $password === '' || $passwordConfirm === '') {
             $error = '모든 항목을 입력해주세요.';
         } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $error = '이메일 형식이 올바르지 않습니다.';
@@ -87,13 +99,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($email === '' || $password === '') {
             $error = '이메일과 비밀번호를 입력해주세요.';
         } else {
-            $stmt = $conn->prepare("SELECT id, password, nickname FROM users WHERE email = ?");
+            $loginSql = $hasBanColumn
+                ? "SELECT id, password, nickname, is_banned, banned_reason FROM users WHERE email = ?"
+                : "SELECT id, password, nickname, 0 AS is_banned, NULL AS banned_reason FROM users WHERE email = ?";
+            $stmt = $conn->prepare($loginSql);
             $stmt->bind_param("s", $email);
             $stmt->execute();
             $user = $stmt->get_result()->fetch_assoc();
             $stmt->close();
 
-            if ($user && password_verify($password, $user['password'])) {
+            if ($user && (int)($user['is_banned'] ?? 0) === 1) {
+                $reason = trim((string)($user['banned_reason'] ?? ''));
+                $error = '관리자에 의해 이용이 제한된 계정입니다.' . ($reason !== '' ? ' 사유: ' . $reason : '');
+            } elseif ($user && password_verify($password, $user['password'])) {
                 $_SESSION['user_id']  = $user['id'];
                 $_SESSION['nickname'] = $user['nickname'];
                 $_SESSION['flash_toast'] = '다시 오신 걸 환영해요.';

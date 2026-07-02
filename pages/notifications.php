@@ -13,6 +13,7 @@ if (!isset($_SESSION['user_id'])) {
 require_once __DIR__ . '/../app/db.php';
 
 $userId = $_SESSION['user_id'];
+$typeFilter = ($_GET['type'] ?? '') === 'neighbor_post' ? 'neighbor_post' : '';
 
 // ① 내 글에 달린 댓글
 $stmt = $conn->prepare(
@@ -119,6 +120,9 @@ foreach ($rows as $r) {
 
 // 여러 종류를 시간순(최신)으로 합치기
 usort($feed, fn($a, $b) => strtotime($b['when']) <=> strtotime($a['when']));
+if ($typeFilter !== '') {
+    $feed = array_values(array_filter($feed, fn($item) => $item['type'] === $typeFilter));
+}
 $feed = array_slice($feed, 0, 30);
 
 $readMap = [];
@@ -150,6 +154,11 @@ require_once __DIR__ . '/../app/header.php';
 
 <section class="noti">
   <h1>내 소식</h1>
+  <nav class="noti-tabs">
+    <a class="<?= $typeFilter === '' ? 'on' : '' ?>" href="notifications.php">전체 소식</a>
+    <a class="<?= $typeFilter === 'neighbor_post' ? 'on' : '' ?>" href="notifications.php?type=neighbor_post">이웃 새 글만</a>
+    <a href="neighbor_posts.php">이웃 새 글 전체</a>
+  </nav>
 
   <?php if (!$feed): ?>
     <p class="empty">아직 내 글의 반응이나 이웃 새 글이 없어요.</p>

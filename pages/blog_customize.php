@@ -35,6 +35,10 @@ $defaults = [
     'post_list_style' => 'card',
     'thumbnail_style' => 'wide',
     'font_style' => 'sans',
+    'blog_mood' => 'daily',
+    'welcome_message' => '',
+    'custom_link_label' => '',
+    'custom_link_url' => '',
     'show_intro' => 1,
     'show_post_summary' => 1,
     'show_visit_count' => 1,
@@ -88,6 +92,15 @@ if (!$settings) {
 }
 $settings = array_merge($defaults, $settings);
 
+$settingColumnResult = $conn->query("SHOW COLUMNS FROM blog_settings");
+$settingColumns = [];
+if ($settingColumnResult) {
+    foreach ($settingColumnResult->fetch_all(MYSQLI_ASSOC) as $columnRow) {
+        $settingColumns[$columnRow['Field']] = true;
+    }
+}
+$hasPersonalColumns = isset($settingColumns['blog_mood'], $settingColumns['welcome_message'], $settingColumns['custom_link_label'], $settingColumns['custom_link_url']);
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $accentColor = pickColor($_POST['accent_color'] ?? '', $defaults['accent_color']);
     $backgroundColor = pickColor($_POST['background_color'] ?? '', $defaults['background_color']);
@@ -103,6 +116,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $postListStyle = pickOption($_POST['post_list_style'] ?? '', ['card', 'list'], 'card');
     $thumbnailStyle = pickOption($_POST['thumbnail_style'] ?? '', ['wide', 'square', 'hidden'], 'wide');
     $fontStyle = pickOption($_POST['font_style'] ?? '', ['sans', 'serif', 'rounded'], 'sans');
+    $blogMood = pickOption($_POST['blog_mood'] ?? '', ['daily', 'studio', 'garden', 'letter', 'mono'], 'daily');
+    $welcomeMessage = mb_substr(trim($_POST['welcome_message'] ?? ''), 0, 120);
+    $customLinkLabel = mb_substr(trim($_POST['custom_link_label'] ?? ''), 0, 40);
+    $customLinkUrl = trim($_POST['custom_link_url'] ?? '');
+    if ($customLinkUrl !== '' && !preg_match('/^https?:\/\/[^\s]+$/i', $customLinkUrl)) {
+        $customLinkUrl = '';
+    }
     $showIntro = isset($_POST['show_intro']) ? 1 : 0;
     $showPostSummary = isset($_POST['show_post_summary']) ? 1 : 0;
     $showVisitCount = isset($_POST['show_visit_count']) ? 1 : 0;
@@ -137,26 +157,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($error === '') {
-        $stmt = $conn->prepare(
-            "UPDATE blog_settings
-                SET accent_color = ?, background_color = ?,
-                    background_image_original = ?, background_image_stored = ?,
-                    background_repeat = ?, background_position = ?, background_size = ?,
-                    header_image_original = ?, header_image_stored = ?, header_height = ?,
-                    layout_type = ?, title_align = ?, sidebar_position = ?, profile_shape = ?,
-                    profile_card_color = ?, post_list_style = ?, thumbnail_style = ?, font_style = ?,
-                    show_intro = ?, show_post_summary = ?, show_visit_count = ?
-              WHERE user_id = ?"
-        );
-        $stmt->bind_param(
-            "sssssssssissssssssiiii",
-            $accentColor, $backgroundColor, $bgOriginal, $bgStored,
-            $backgroundRepeat, $backgroundPosition, $backgroundSize,
-            $headerOriginal, $headerStored, $headerHeight,
-            $layoutType, $titleAlign, $sidebarPosition, $profileShape,
-            $profileCardColor, $postListStyle, $thumbnailStyle, $fontStyle,
-            $showIntro, $showPostSummary, $showVisitCount, $userId
-        );
+        if ($hasPersonalColumns) {
+            $stmt = $conn->prepare(
+                "UPDATE blog_settings
+                    SET accent_color = ?, background_color = ?,
+                        background_image_original = ?, background_image_stored = ?,
+                        background_repeat = ?, background_position = ?, background_size = ?,
+                        header_image_original = ?, header_image_stored = ?, header_height = ?,
+                        layout_type = ?, title_align = ?, sidebar_position = ?, profile_shape = ?,
+                        profile_card_color = ?, post_list_style = ?, thumbnail_style = ?, font_style = ?,
+                        blog_mood = ?, welcome_message = ?, custom_link_label = ?, custom_link_url = ?,
+                        show_intro = ?, show_post_summary = ?, show_visit_count = ?
+                  WHERE user_id = ?"
+            );
+            $stmt->bind_param(
+                "sssssssssissssssssssssiiii",
+                $accentColor, $backgroundColor, $bgOriginal, $bgStored,
+                $backgroundRepeat, $backgroundPosition, $backgroundSize,
+                $headerOriginal, $headerStored, $headerHeight,
+                $layoutType, $titleAlign, $sidebarPosition, $profileShape,
+                $profileCardColor, $postListStyle, $thumbnailStyle, $fontStyle,
+                $blogMood, $welcomeMessage, $customLinkLabel, $customLinkUrl,
+                $showIntro, $showPostSummary, $showVisitCount, $userId
+            );
+        } else {
+            $stmt = $conn->prepare(
+                "UPDATE blog_settings
+                    SET accent_color = ?, background_color = ?,
+                        background_image_original = ?, background_image_stored = ?,
+                        background_repeat = ?, background_position = ?, background_size = ?,
+                        header_image_original = ?, header_image_stored = ?, header_height = ?,
+                        layout_type = ?, title_align = ?, sidebar_position = ?, profile_shape = ?,
+                        profile_card_color = ?, post_list_style = ?, thumbnail_style = ?, font_style = ?,
+                        show_intro = ?, show_post_summary = ?, show_visit_count = ?
+                  WHERE user_id = ?"
+            );
+            $stmt->bind_param(
+                "sssssssssissssssssiiii",
+                $accentColor, $backgroundColor, $bgOriginal, $bgStored,
+                $backgroundRepeat, $backgroundPosition, $backgroundSize,
+                $headerOriginal, $headerStored, $headerHeight,
+                $layoutType, $titleAlign, $sidebarPosition, $profileShape,
+                $profileCardColor, $postListStyle, $thumbnailStyle, $fontStyle,
+                $showIntro, $showPostSummary, $showVisitCount, $userId
+            );
+        }
         $stmt->execute();
         $stmt->close();
         $saved = true;
@@ -370,6 +415,39 @@ require_once __DIR__ . '/../app/header.php';
             <label class="wf-checkfield"><input type="checkbox" name="show_intro" value="1" <?= (int)$settings['show_intro'] === 1 ? 'checked' : '' ?>><span>소개글 표시</span></label>
             <label class="wf-checkfield"><input type="checkbox" name="show_post_summary" value="1" <?= (int)$settings['show_post_summary'] === 1 ? 'checked' : '' ?>><span>글 요약 표시</span></label>
             <label class="wf-checkfield"><input type="checkbox" name="show_visit_count" value="1" <?= (int)$settings['show_visit_count'] === 1 ? 'checked' : '' ?>><span>방문자 수 표시</span></label>
+          </div>
+        </section>
+
+        <section class="customize-panel">
+          <h2>개성</h2>
+          <?php if (!$hasPersonalColumns): ?>
+            <p class="dashboard-note">분위기와 추천 링크를 저장하려면 database/add_professor_features.sql 을 실행해주세요.</p>
+          <?php endif; ?>
+          <div class="wf-row">
+            <label>
+              <span>블로그 분위기</span>
+              <select name="blog_mood" <?= !$hasPersonalColumns ? 'disabled' : '' ?>>
+                <option value="daily" <?= $settings['blog_mood'] === 'daily' ? 'selected' : '' ?>>데일리</option>
+                <option value="studio" <?= $settings['blog_mood'] === 'studio' ? 'selected' : '' ?>>스튜디오</option>
+                <option value="garden" <?= $settings['blog_mood'] === 'garden' ? 'selected' : '' ?>>가든</option>
+                <option value="letter" <?= $settings['blog_mood'] === 'letter' ? 'selected' : '' ?>>편지</option>
+                <option value="mono" <?= $settings['blog_mood'] === 'mono' ? 'selected' : '' ?>>모노</option>
+              </select>
+            </label>
+          </div>
+          <label class="wf-field">
+            <span>환영 문구</span>
+            <input type="text" name="welcome_message" maxlength="120" value="<?= htmlspecialchars($settings['welcome_message'] ?? '') ?>" <?= !$hasPersonalColumns ? 'disabled' : '' ?> placeholder="방문자에게 보여줄 한 줄">
+          </label>
+          <div class="wf-row">
+            <label>
+              <span>추천 링크 이름</span>
+              <input type="text" name="custom_link_label" maxlength="40" value="<?= htmlspecialchars($settings['custom_link_label'] ?? '') ?>" <?= !$hasPersonalColumns ? 'disabled' : '' ?> placeholder="예: 내 플레이리스트">
+            </label>
+            <label>
+              <span>추천 링크 URL</span>
+              <input type="text" name="custom_link_url" value="<?= htmlspecialchars($settings['custom_link_url'] ?? '') ?>" <?= !$hasPersonalColumns ? 'disabled' : '' ?> placeholder="https://...">
+            </label>
           </div>
         </section>
       </div>

@@ -31,17 +31,37 @@ $isIndexPage = $currentPage === 'index.php';
 $loginNickname = $_SESSION['nickname'] ?? null;
 $flashToast = $_SESSION['flash_toast'] ?? '';
 unset($_SESSION['flash_toast']);
+$siteNotice = '';
+$siteSettingsResult = $conn->query("SHOW TABLES LIKE 'site_settings'");
+if ($siteSettingsResult && $siteSettingsResult->num_rows > 0) {
+    $stmt = $conn->prepare("SELECT setting_value FROM site_settings WHERE setting_key = 'site_notice'");
+    $stmt->execute();
+    $siteNotice = trim((string)($stmt->get_result()->fetch_assoc()['setting_value'] ?? ''));
+    $stmt->close();
+}
 
 // 상단바 아바타용 — 로그인 유저의 프로필 이미지(없으면 null)
 $loginAvatar = null;
 $loginIsAdmin = false;
 $unreadNotifications = 0;
+$unreadMessages = 0;
 if (isset($_SESSION['user_id'])) {
     $adminColumnResult = $conn->query("SHOW COLUMNS FROM users LIKE 'is_admin'");
     $hasAdminColumn = $adminColumnResult && $adminColumnResult->num_rows > 0;
-    $loginUserSql = $hasAdminColumn
-        ? "SELECT profile_image_stored, notifications_read_at, is_admin FROM users WHERE id = ?"
-        : "SELECT profile_image_stored, notifications_read_at, 0 AS is_admin FROM users WHERE id = ?";
+    $banColumnResult = $conn->query("SHOW COLUMNS FROM users LIKE 'is_banned'");
+    $hasBanColumn = $banColumnResult && $banColumnResult->num_rows > 0;
+    $lastSeenColumnResult = $conn->query("SHOW COLUMNS FROM users LIKE 'last_seen_at'");
+    $hasLastSeenColumn = $lastSeenColumnResult && $lastSeenColumnResult->num_rows > 0;
+    if ($hasLastSeenColumn) {
+        $stmt = $conn->prepare("UPDATE users SET last_seen_at = NOW() WHERE id = ?");
+        $stmt->bind_param("i", $_SESSION['user_id']);
+        $stmt->execute();
+        $stmt->close();
+    }
+    $loginUserSql = "SELECT profile_image_stored, notifications_read_at, "
+        . ($hasAdminColumn ? "is_admin" : "0 AS is_admin") . ", "
+        . ($hasBanColumn ? "is_banned, banned_reason" : "0 AS is_banned, NULL AS banned_reason")
+        . " FROM users WHERE id = ?";
     $stmt = $conn->prepare($loginUserSql);
     $stmt->bind_param("i", $_SESSION['user_id']);
     $stmt->execute();
@@ -50,6 +70,16 @@ if (isset($_SESSION['user_id'])) {
 
     $loginAvatar = $loginUser['profile_image_stored'] ?? null;
     $loginIsAdmin = (int)($loginUser['is_admin'] ?? 0) === 1;
+    if ((int)($loginUser['is_banned'] ?? 0) === 1) {
+        $_SESSION = [];
+        if (ini_get('session.use_cookies')) {
+            $params = session_get_cookie_params();
+            setcookie(session_name(), '', time() - 42000, $params['path'], $params['domain'], $params['secure'], $params['httponly']);
+        }
+        session_destroy();
+        header('Location: auth.php?banned=1');
+        exit;
+    }
 
     $stmt = $conn->prepare(
         "SELECT COUNT(*) AS cnt
@@ -90,6 +120,15 @@ if (isset($_SESSION['user_id'])) {
     $stmt->execute();
     $unreadNotifications = (int)($stmt->get_result()->fetch_assoc()['cnt'] ?? 0);
     $stmt->close();
+
+    $messagesTableResult = $conn->query("SHOW TABLES LIKE 'messages'");
+    if ($messagesTableResult && $messagesTableResult->num_rows > 0) {
+        $stmt = $conn->prepare("SELECT COUNT(*) AS cnt FROM messages WHERE receiver_id = ? AND is_read = 0");
+        $stmt->bind_param("i", $_SESSION['user_id']);
+        $stmt->execute();
+        $unreadMessages = (int)($stmt->get_result()->fetch_assoc()['cnt'] ?? 0);
+        $stmt->close();
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -121,6 +160,12 @@ if (isset($_SESSION['user_id'])) {
       <?php if ($loginNickname): ?>
         <a href="write.php">글쓰기</a>
         <a href="neighbors.php">이웃</a>
+        <a class="topbar__noti" href="messages.php">
+          쪽지
+          <?php if ($unreadMessages > 0): ?>
+            <span class="topbar__badge"><?= $unreadMessages > 99 ? '99+' : (int)$unreadMessages ?></span>
+          <?php endif; ?>
+        </a>
         <a class="topbar__noti" href="notifications.php">
           소식
           <?php if ($unreadNotifications > 0): ?>
@@ -142,6 +187,7 @@ if (isset($_SESSION['user_id'])) {
             <a href="blog.php?id=<?= (int)$_SESSION['user_id'] ?>">내 블로그</a>
             <a href="stats.php">블로그 현황</a>
             <a href="activity.php">내 활동</a>
+            <a href="messages.php">쪽지<?= $unreadMessages > 0 ? ' (' . ($unreadMessages > 99 ? '99+' : (int)$unreadMessages) . ')' : '' ?></a>
             <a href="scraps.php">스크랩</a>
             <?php if ($loginIsAdmin): ?>
               <a href="admin.php">관리자</a>
@@ -181,6 +227,12 @@ if (isset($_SESSION['user_id'])) {
       <a href="stats.php">현황</a>
       <a href="activity.php">내 활동</a>
       <a href="neighbors.php">이웃</a>
+      <a class="topbar__noti" href="messages.php">
+        쪽지
+        <?php if ($unreadMessages > 0): ?>
+          <span class="topbar__badge"><?= $unreadMessages > 99 ? '99+' : (int)$unreadMessages ?></span>
+        <?php endif; ?>
+      </a>
       <?php if ($loginIsAdmin): ?>
         <a href="admin.php">관리자</a>
       <?php endif; ?>
@@ -227,4 +279,7 @@ if (isset($_SESSION['user_id'])) {
 </aside>
 
 <main class="page<?= $pageClass !== '' ? ' ' . htmlspecialchars($pageClass, ENT_QUOTES) : '' ?>">
+<?php if ($siteNotice !== ''): ?>
+  <div class="site-notice"><?= nl2br(htmlspecialchars($siteNotice)) ?></div>
+<?php endif; ?>
 

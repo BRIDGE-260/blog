@@ -58,8 +58,241 @@ function adminCount(mysqli $conn, string $sql, string $types = '', array $params
     return (int)($row['cnt'] ?? 0);
 }
 
+function adminTableExists(mysqli $conn, string $table): bool {
+    $stmt = $conn->prepare(
+        "SELECT COUNT(*) AS cnt
+         FROM information_schema.TABLES
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?"
+    );
+    $stmt->bind_param("s", $table);
+    $stmt->execute();
+    $exists = (int)($stmt->get_result()->fetch_assoc()['cnt'] ?? 0) > 0;
+    $stmt->close();
+    return $exists;
+}
+
+function adminColumnExists(mysqli $conn, string $table, string $column): bool {
+    $stmt = $conn->prepare(
+        "SELECT COUNT(*) AS cnt
+         FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?"
+    );
+    $stmt->bind_param("ss", $table, $column);
+    $stmt->execute();
+    $exists = (int)($stmt->get_result()->fetch_assoc()['cnt'] ?? 0) > 0;
+    $stmt->close();
+    return $exists;
+}
+
+function adminLogAction(mysqli $conn, bool $hasLogs, int $adminId, string $targetType, int $targetId, string $action, string $reason = ''): void {
+    if (!$hasLogs) return;
+    $reason = mb_substr(trim($reason), 0, 255);
+    $stmt = $conn->prepare(
+        "INSERT INTO moderation_logs (admin_id, target_type, target_id, action, reason)
+         VALUES (?, ?, ?, ?, ?)"
+    );
+    $stmt->bind_param("isiss", $adminId, $targetType, $targetId, $action, $reason);
+    $stmt->execute();
+    $stmt->close();
+}
+
+function adminDeletePost(mysqli $conn, int $postId): bool {
+    $stmt = $conn->prepare("SELECT id, thumbnail_stored FROM posts WHERE id = ?");
+    $stmt->bind_param("i", $postId);
+    $stmt->execute();
+    $post = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    if (!$post) return false;
+
+    $stmt = $conn->prepare("SELECT stored FROM post_images WHERE post_id = ?");
+    $stmt->bind_param("i", $postId);
+    $stmt->execute();
+    $mediaRows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    foreach ($mediaRows as $media) {
+        if (!empty($media['stored'])) {
+            @unlink(__DIR__ . '/../uploads/' . $media['stored']);
+        }
+    }
+    if (!empty($post['thumbnail_stored'])) {
+        @unlink(__DIR__ . '/../uploads/' . $post['thumbnail_stored']);
+    }
+
+    $stmt = $conn->prepare("DELETE FROM posts WHERE id = ?");
+    $stmt->bind_param("i", $postId);
+    $stmt->execute();
+    $deleted = $stmt->affected_rows > 0;
+    $stmt->close();
+    return $deleted;
+}
+
+$adminMessage = '';
+$adminId = (int)$_SESSION['user_id'];
+$hasSiteSettings = adminTableExists($conn, 'site_settings');
+$hasModerationLogs = adminTableExists($conn, 'moderation_logs');
+$hasBanColumn = adminColumnExists($conn, 'users', 'is_banned');
+$isAjaxRequest = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'fetch';
+
+function adminJson(array $data, int $status = 200): void {
+    http_response_code($status);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($data, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $adminAction = $_POST['admin_action'] ?? '';
+
+    if ($adminAction === 'user_role') {
+        $targetId = (int)($_POST['user_id'] ?? 0);
+        $isAdmin = isset($_POST['is_admin']) ? 1 : 0;
+        if ($targetId > 0) {
+            if ($targetId === (int)$_SESSION['user_id'] && $isAdmin === 0) {
+                $adminCountNow = adminCount($conn, "SELECT COUNT(*) AS cnt FROM users WHERE is_admin = 1");
+                if ($adminCountNow <= 1) {
+                    $adminMessage = '마지막 관리자 권한은 해제할 수 없어요.';
+                }
+            }
+            if ($adminMessage === '') {
+                $stmt = $conn->prepare("UPDATE users SET is_admin = ? WHERE id = ?");
+                $stmt->bind_param("ii", $isAdmin, $targetId);
+                $stmt->execute();
+                $stmt->close();
+                adminLogAction($conn, $hasModerationLogs, $adminId, 'user', $targetId, $isAdmin ? 'grant_admin' : 'revoke_admin');
+                $adminMessage = '회원 권한을 저장했어요.';
+            }
+        }
+    } elseif ($adminAction === 'user_ban' && $hasBanColumn) {
+        $targetId = (int)($_POST['user_id'] ?? 0);
+        $banMode = $_POST['ban_mode'] ?? '';
+        $reason = mb_substr(trim($_POST['reason'] ?? ''), 0, 255);
+        $isBannedNow = null;
+        if ($targetId <= 0) {
+            $adminMessage = '회원을 찾을 수 없어요.';
+        } elseif ($targetId === $adminId) {
+            $adminMessage = '자기 자신은 밴할 수 없어요.';
+        } elseif ($banMode === 'ban') {
+            $stmt = $conn->prepare("UPDATE users SET is_banned = 1, banned_reason = ?, banned_at = NOW() WHERE id = ?");
+            $stmt->bind_param("si", $reason, $targetId);
+            $stmt->execute();
+            $stmt->close();
+            adminLogAction($conn, $hasModerationLogs, $adminId, 'user', $targetId, 'ban_user', $reason);
+            $adminMessage = '회원을 밴 처리했어요.';
+            $isBannedNow = 1;
+        } elseif ($banMode === 'unban') {
+            $stmt = $conn->prepare("UPDATE users SET is_banned = 0, banned_reason = NULL, banned_at = NULL WHERE id = ?");
+            $stmt->bind_param("i", $targetId);
+            $stmt->execute();
+            $stmt->close();
+            adminLogAction($conn, $hasModerationLogs, $adminId, 'user', $targetId, 'unban_user', $reason);
+            $adminMessage = '회원 밴을 해제했어요.';
+            $isBannedNow = 0;
+        }
+
+        if ($isAjaxRequest) {
+            if ($isBannedNow === null) {
+                adminJson(['ok' => false, 'message' => $adminMessage ?: '처리할 수 없어요.'], 422);
+            }
+            $bannedCount = adminCount($conn, "SELECT COUNT(*) AS cnt FROM users WHERE is_banned = 1");
+            adminJson([
+                'ok' => true,
+                'message' => $adminMessage,
+                'user_id' => $targetId,
+                'is_banned' => $isBannedNow,
+                'reason' => $isBannedNow ? $reason : '',
+                'banned_count' => $bannedCount,
+            ]);
+        }
+    } elseif ($adminAction === 'post_policy') {
+        $targetPostId = (int)($_POST['post_id'] ?? 0);
+        $status = ($_POST['status'] ?? '') === 'draft' ? 'draft' : 'published';
+        $visibility = $_POST['visibility'] ?? 'all';
+        if (!in_array($visibility, ['all', 'neighbor', 'private'], true)) {
+            $visibility = 'all';
+        }
+        $isPinned = isset($_POST['is_pinned']) ? 1 : 0;
+        if ($targetPostId > 0) {
+            $stmt = $conn->prepare("UPDATE posts SET status = ?, visibility = ?, is_pinned = ? WHERE id = ?");
+            $stmt->bind_param("ssii", $status, $visibility, $isPinned, $targetPostId);
+            $stmt->execute();
+            $stmt->close();
+            adminLogAction($conn, $hasModerationLogs, $adminId, 'post', $targetPostId, 'update_post_policy');
+            $adminMessage = '글 권한을 저장했어요.';
+        }
+    } elseif ($adminAction === 'post_delete') {
+        $targetPostId = (int)($_POST['post_id'] ?? 0);
+        $reason = mb_substr(trim($_POST['reason'] ?? ''), 0, 255);
+        $deletedPost = false;
+        if ($targetPostId <= 0) {
+            $adminMessage = '글을 찾을 수 없어요.';
+        } elseif (($_POST['confirm_delete'] ?? '') !== '1') {
+            $adminMessage = '강제 삭제 확인에 체크해야 삭제할 수 있어요.';
+        } elseif (adminDeletePost($conn, $targetPostId)) {
+            adminLogAction($conn, $hasModerationLogs, $adminId, 'post', $targetPostId, 'delete_post', $reason);
+            $adminMessage = '글을 강제 삭제했어요.';
+            $deletedPost = true;
+        } else {
+            $adminMessage = '이미 삭제됐거나 찾을 수 없는 글입니다.';
+        }
+
+        if ($isAjaxRequest) {
+            if (!$deletedPost) {
+                adminJson(['ok' => false, 'message' => $adminMessage ?: '삭제할 수 없어요.'], 422);
+            }
+            adminJson([
+                'ok' => true,
+                'message' => $adminMessage,
+                'post_id' => $targetPostId,
+                'post_count' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM posts"),
+                'published_count' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM posts WHERE status = 'published'"),
+                'draft_count' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM posts WHERE status = 'draft'"),
+            ]);
+        }
+    } elseif ($adminAction === 'comment_delete') {
+        $commentId = (int)($_POST['comment_id'] ?? 0);
+        $reason = mb_substr(trim($_POST['reason'] ?? ''), 0, 255);
+        if ($commentId > 0) {
+            $stmt = $conn->prepare("DELETE FROM comments WHERE id = ?");
+            $stmt->bind_param("i", $commentId);
+            $stmt->execute();
+            $deleted = $stmt->affected_rows > 0;
+            $stmt->close();
+            if ($deleted) {
+                adminLogAction($conn, $hasModerationLogs, $adminId, 'comment', $commentId, 'delete_comment', $reason);
+                $adminMessage = '댓글을 삭제했어요.';
+            } else {
+                $adminMessage = '이미 삭제됐거나 찾을 수 없는 댓글입니다.';
+            }
+        }
+    } elseif ($adminAction === 'site_settings' && $hasSiteSettings) {
+        $siteNotice = mb_substr(trim($_POST['site_notice'] ?? ''), 0, 500);
+        $mainFeatureTitle = mb_substr(trim($_POST['main_feature_title'] ?? ''), 0, 100);
+        $mainFeatureText = mb_substr(trim($_POST['main_feature_text'] ?? ''), 0, 255);
+        $allowPublicJoin = isset($_POST['allow_public_join']) ? '1' : '0';
+        $settingsToSave = [
+            'site_notice' => $siteNotice,
+            'main_feature_title' => $mainFeatureTitle,
+            'main_feature_text' => $mainFeatureText,
+            'allow_public_join' => $allowPublicJoin,
+        ];
+        foreach ($settingsToSave as $key => $value) {
+            $stmt = $conn->prepare(
+                "INSERT INTO site_settings (setting_key, setting_value)
+                 VALUES (?, ?)
+                 ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)"
+            );
+            $stmt->bind_param("ss", $key, $value);
+            $stmt->execute();
+            $stmt->close();
+        }
+        $adminMessage = '사이트 설정을 저장했어요.';
+    }
+}
+
 $summary = [
     'users' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM users"),
+    'banned_users' => $hasBanColumn ? adminCount($conn, "SELECT COUNT(*) AS cnt FROM users WHERE is_banned = 1") : 0,
+    'today_users' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM users WHERE DATE(created_at) = CURDATE()"),
     'posts' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM posts"),
     'published' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM posts WHERE status = 'published'"),
     'drafts' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM posts WHERE status = 'draft'"),
@@ -73,17 +306,20 @@ $summary = [
     'total_visit' => adminCount($conn, "SELECT COALESCE(SUM(count), 0) AS cnt FROM visit_logs"),
 ];
 
+$banSelect = $hasBanColumn
+    ? "is_banned, banned_reason, banned_at"
+    : "0 AS is_banned, NULL AS banned_reason, NULL AS banned_at";
 $recentUsers = adminFetchAll(
     $conn,
-    "SELECT id, email, name, nickname, blog_title, created_at
+    "SELECT id, email, name, nickname, blog_title, is_admin, $banSelect, created_at
      FROM users
      ORDER BY created_at DESC, id DESC
-     LIMIT 5"
+     LIMIT 12"
 );
 
 $recentPosts = adminFetchAll(
     $conn,
-    "SELECT p.id, p.title, p.status, p.visibility, p.view_count, p.created_at,
+    "SELECT p.id, p.title, p.status, p.visibility, p.is_pinned, p.view_count, p.created_at,
             u.id AS user_id, u.nickname,
             (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count,
             (SELECT COUNT(*) FROM likes l WHERE l.post_id = p.id) AS like_count
@@ -92,6 +328,20 @@ $recentPosts = adminFetchAll(
      ORDER BY p.created_at DESC, p.id DESC
      LIMIT 8"
 );
+
+$siteSettings = [
+    'site_notice' => '',
+    'main_feature_title' => 'BRIDGE 206',
+    'main_feature_text' => '세대와 관심사를 잇는 블로그',
+    'allow_public_join' => '1',
+];
+if ($hasSiteSettings) {
+    foreach (adminFetchAll($conn, "SELECT setting_key, setting_value FROM site_settings") as $settingRow) {
+        if (array_key_exists($settingRow['setting_key'], $siteSettings)) {
+            $siteSettings[$settingRow['setting_key']] = (string)$settingRow['setting_value'];
+        }
+    }
+}
 
 $recentComments = adminFetchAll(
     $conn,
@@ -103,6 +353,28 @@ $recentComments = adminFetchAll(
      ORDER BY c.created_at DESC, c.id DESC
      LIMIT 5"
 );
+
+$hotCommentPosts = adminFetchAll(
+    $conn,
+    "SELECT p.id, p.title, u.nickname,
+            COUNT(c.id) AS comment_count,
+            MAX(c.created_at) AS last_comment_at
+     FROM posts p
+     JOIN users u ON u.id = p.user_id
+     JOIN comments c ON c.post_id = p.id
+     GROUP BY p.id, p.title, u.nickname
+     ORDER BY comment_count DESC, last_comment_at DESC
+     LIMIT 5"
+);
+
+$recentLogs = $hasModerationLogs ? adminFetchAll(
+    $conn,
+    "SELECT ml.target_type, ml.target_id, ml.action, ml.reason, ml.created_at, u.nickname AS admin_nickname
+     FROM moderation_logs ml
+     JOIN users u ON u.id = ml.admin_id
+     ORDER BY ml.created_at DESC, ml.id DESC
+     LIMIT 8"
+) : [];
 
 $recentGuestbook = adminFetchAll(
     $conn,
@@ -155,16 +427,22 @@ require_once __DIR__ . '/../app/header.php';
       <p>회원, 글, 댓글, 방문 기록을 한 화면에서 확인하는 BRIDGE 206 운영 현황판입니다.</p>
     </div>
     <div class="admin-hero__note">
-      <strong>읽기 전용</strong>
-      <span>운영 현황 확인용 화면이라 위험한 삭제/수정 기능은 넣지 않았습니다.</span>
+      <strong>운영 권한 관리</strong>
+      <span>회원 관리자 권한, 글 공개 상태, 사이트 공지와 메인 문구를 조정할 수 있습니다.</span>
     </div>
   </div>
 
+  <?php if ($adminMessage !== ''): ?>
+    <div class="form-ok"><?= htmlspecialchars($adminMessage) ?></div>
+  <?php endif; ?>
+
   <div class="admin-stats">
     <div><span><?= number_format($summary['users']) ?></span><strong>회원</strong></div>
-    <div><span><?= number_format($summary['posts']) ?></span><strong>전체 글</strong></div>
-    <div><span><?= number_format($summary['published']) ?></span><strong>발행 글</strong></div>
-    <div><span><?= number_format($summary['drafts']) ?></span><strong>임시저장</strong></div>
+    <div><span data-admin-banned-count><?= number_format($summary['banned_users']) ?></span><strong>밴 회원</strong></div>
+    <div><span><?= number_format($summary['today_users']) ?></span><strong>오늘 가입</strong></div>
+    <div><span data-admin-post-count><?= number_format($summary['posts']) ?></span><strong>전체 글</strong></div>
+    <div><span data-admin-published-count><?= number_format($summary['published']) ?></span><strong>발행 글</strong></div>
+    <div><span data-admin-draft-count><?= number_format($summary['drafts']) ?></span><strong>임시저장</strong></div>
     <div><span><?= number_format($summary['comments']) ?></span><strong>댓글</strong></div>
     <div><span><?= number_format($summary['guestbook']) ?></span><strong>방명록</strong></div>
     <div><span><?= number_format($summary['likes']) ?></span><strong>공감</strong></div>
@@ -176,6 +454,36 @@ require_once __DIR__ . '/../app/header.php';
   </div>
 
   <div class="admin-grid">
+    <section class="admin-panel admin-panel--wide">
+      <div class="admin-panel__head">
+        <h2>사이트 구조 설정</h2>
+        <span>공지 · 메인 문구 · 가입 정책</span>
+      </div>
+      <?php if (!$hasSiteSettings): ?>
+        <p class="admin-empty">사이트 설정을 변경하려면 database/add_professor_features.sql 을 먼저 실행해주세요.</p>
+      <?php else: ?>
+        <form class="admin-site-form" method="post" action="admin.php">
+          <input type="hidden" name="admin_action" value="site_settings">
+          <label>
+            <span>사이트 공지</span>
+            <textarea name="site_notice" rows="3" maxlength="500"><?= htmlspecialchars($siteSettings['site_notice']) ?></textarea>
+          </label>
+          <div>
+            <label>
+              <span>메인 소개 제목</span>
+              <input type="text" name="main_feature_title" maxlength="100" value="<?= htmlspecialchars($siteSettings['main_feature_title']) ?>">
+            </label>
+            <label>
+              <span>메인 소개 문구</span>
+              <input type="text" name="main_feature_text" maxlength="255" value="<?= htmlspecialchars($siteSettings['main_feature_text']) ?>">
+            </label>
+          </div>
+          <label class="admin-check"><input type="checkbox" name="allow_public_join" value="1" <?= $siteSettings['allow_public_join'] === '1' ? 'checked' : '' ?>> 공개 회원가입 허용</label>
+          <button type="submit" class="btn-primary">사이트 설정 저장</button>
+        </form>
+      <?php endif; ?>
+    </section>
+
     <section class="admin-panel admin-panel--wide">
       <div class="admin-panel__head">
         <h2>최근 가입 회원</h2>
@@ -191,21 +499,55 @@ require_once __DIR__ . '/../app/header.php';
               <th>이메일</th>
               <th>블로그</th>
               <th>가입일</th>
+              <th>상태</th>
+              <th>권한</th>
+              <th>밴</th>
             </tr>
           </thead>
           <tbody>
             <?php foreach ($recentUsers as $u): ?>
-              <tr>
+              <tr data-user-row="<?= (int)$u['id'] ?>">
                 <td><?= (int)$u['id'] ?></td>
                 <td><a href="blog.php?id=<?= (int)$u['id'] ?>"><?= htmlspecialchars($u['nickname']) ?></a></td>
                 <td><?= htmlspecialchars($u['name']) ?></td>
                 <td><?= htmlspecialchars($u['email']) ?></td>
                 <td><?= htmlspecialchars($u['blog_title'] ?: $u['nickname'] . '의 블로그') ?></td>
                 <td><?= date('Y.m.d H:i', strtotime($u['created_at'])) ?></td>
+                <td data-user-status>
+                  <?php if ((int)$u['is_banned'] === 1): ?>
+                    <span class="admin-badge admin-badge--danger">밴</span>
+                    <?php if (!empty($u['banned_reason'])): ?><small class="admin-help"><?= htmlspecialchars($u['banned_reason']) ?></small><?php endif; ?>
+                  <?php else: ?>
+                    <span class="admin-badge">정상</span>
+                  <?php endif; ?>
+                </td>
+                <td>
+                  <form class="admin-inline-form" method="post" action="admin.php">
+                    <input type="hidden" name="admin_action" value="user_role">
+                    <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
+                    <label><input type="checkbox" name="is_admin" value="1" <?= (int)$u['is_admin'] === 1 ? 'checked' : '' ?>> 관리자</label>
+                    <button type="submit">저장</button>
+                  </form>
+                </td>
+                <td>
+                  <?php if ($hasBanColumn): ?>
+                    <form class="admin-inline-form admin-inline-form--ban" method="post" action="admin.php" data-ajax-action="user_ban" data-confirm="<?= (int)$u['is_banned'] === 1 ? '이 회원의 밴을 해제할까요?' : '이 회원을 강제 밴할까요?' ?>">
+                      <input type="hidden" name="admin_action" value="user_ban">
+                      <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
+                      <input type="hidden" name="ban_mode" value="<?= (int)$u['is_banned'] === 1 ? 'unban' : 'ban' ?>">
+                      <?php if ((int)$u['is_banned'] !== 1): ?>
+                        <input type="text" name="reason" maxlength="255" placeholder="사유">
+                      <?php endif; ?>
+                      <button type="submit" class="<?= (int)$u['is_banned'] === 1 ? '' : 'is-danger' ?>"><?= (int)$u['is_banned'] === 1 ? '해제' : '밴' ?></button>
+                    </form>
+                  <?php else: ?>
+                    <span class="admin-help">migration 필요</span>
+                  <?php endif; ?>
+                </td>
               </tr>
             <?php endforeach; ?>
             <?php if (!$recentUsers): ?>
-              <tr><td colspan="6" class="admin-empty">회원이 없습니다.</td></tr>
+              <tr><td colspan="9" class="admin-empty">회원이 없습니다.</td></tr>
             <?php endif; ?>
           </tbody>
         </table>
@@ -228,11 +570,13 @@ require_once __DIR__ . '/../app/header.php';
               <th>공개</th>
               <th>반응</th>
               <th>작성일</th>
+              <th>권한</th>
+              <th>강제 삭제</th>
             </tr>
           </thead>
           <tbody>
             <?php foreach ($recentPosts as $p): ?>
-              <tr>
+              <tr data-post-row="<?= (int)$p['id'] ?>">
                 <td><?= (int)$p['id'] ?></td>
                 <td><a href="view.php?id=<?= (int)$p['id'] ?>"><?= htmlspecialchars($p['title']) ?></a></td>
                 <td><a href="blog.php?id=<?= (int)$p['user_id'] ?>"><?= htmlspecialchars($p['nickname']) ?></a></td>
@@ -240,10 +584,36 @@ require_once __DIR__ . '/../app/header.php';
                 <td><?= htmlspecialchars($visibilityLabels[$p['visibility']] ?? $p['visibility']) ?></td>
                 <td>조회 <?= (int)$p['view_count'] ?> · 공감 <?= (int)$p['like_count'] ?> · 댓글 <?= (int)$p['comment_count'] ?></td>
                 <td><?= date('Y.m.d H:i', strtotime($p['created_at'])) ?></td>
+                <td>
+                  <form class="admin-inline-form admin-inline-form--post" method="post" action="admin.php">
+                    <input type="hidden" name="admin_action" value="post_policy">
+                    <input type="hidden" name="post_id" value="<?= (int)$p['id'] ?>">
+                    <select name="status">
+                      <option value="published" <?= $p['status'] === 'published' ? 'selected' : '' ?>>발행</option>
+                      <option value="draft" <?= $p['status'] === 'draft' ? 'selected' : '' ?>>임시</option>
+                    </select>
+                    <select name="visibility">
+                      <option value="all" <?= $p['visibility'] === 'all' ? 'selected' : '' ?>>전체</option>
+                      <option value="neighbor" <?= $p['visibility'] === 'neighbor' ? 'selected' : '' ?>>이웃</option>
+                      <option value="private" <?= $p['visibility'] === 'private' ? 'selected' : '' ?>>비공개</option>
+                    </select>
+                    <label><input type="checkbox" name="is_pinned" value="1" <?= (int)$p['is_pinned'] === 1 ? 'checked' : '' ?>> 공지</label>
+                    <button type="submit">저장</button>
+                  </form>
+                </td>
+                <td>
+                  <form class="admin-inline-form admin-inline-form--delete" method="post" action="admin.php" data-ajax-action="post_delete" data-confirm="이 글을 강제 삭제할까요? 첨부파일, 댓글, 공감도 함께 삭제됩니다.">
+                    <input type="hidden" name="admin_action" value="post_delete">
+                    <input type="hidden" name="post_id" value="<?= (int)$p['id'] ?>">
+                    <input type="text" name="reason" maxlength="255" placeholder="사유">
+                    <label><input type="checkbox" name="confirm_delete" value="1" required> 확인</label>
+                    <button type="submit" class="is-danger">삭제</button>
+                  </form>
+                </td>
               </tr>
             <?php endforeach; ?>
             <?php if (!$recentPosts): ?>
-              <tr><td colspan="7" class="admin-empty">게시글이 없습니다.</td></tr>
+              <tr><td colspan="9" class="admin-empty">게시글이 없습니다.</td></tr>
             <?php endif; ?>
           </tbody>
         </table>
@@ -257,14 +627,61 @@ require_once __DIR__ . '/../app/header.php';
       </div>
       <div class="admin-list">
         <?php foreach ($recentComments as $c): ?>
-          <a href="view.php?id=<?= (int)$c['post_id'] ?>#comment-<?= (int)$c['id'] ?>">
-            <strong><?= htmlspecialchars($c['writer_nickname']) ?></strong>
-            <span><?= htmlspecialchars(mb_strimwidth($c['content'], 0, 70, '...')) ?></span>
-            <em><?= htmlspecialchars($c['post_title']) ?> · <?= date('m.d H:i', strtotime($c['created_at'])) ?></em>
-          </a>
+          <div class="admin-list__item">
+            <a href="view.php?id=<?= (int)$c['post_id'] ?>#comment-<?= (int)$c['id'] ?>">
+              <strong><?= htmlspecialchars($c['writer_nickname']) ?></strong>
+              <span><?= htmlspecialchars(mb_strimwidth($c['content'], 0, 70, '...')) ?></span>
+              <em><?= htmlspecialchars($c['post_title']) ?> · <?= date('m.d H:i', strtotime($c['created_at'])) ?></em>
+            </a>
+            <form method="post" action="admin.php" data-confirm="이 댓글을 삭제할까요? 답글이 있으면 함께 삭제됩니다.">
+              <input type="hidden" name="admin_action" value="comment_delete">
+              <input type="hidden" name="comment_id" value="<?= (int)$c['id'] ?>">
+              <input type="text" name="reason" maxlength="255" placeholder="삭제 사유">
+              <button type="submit" class="is-danger">댓글 삭제</button>
+            </form>
+          </div>
         <?php endforeach; ?>
         <?php if (!$recentComments): ?><p class="admin-empty">댓글이 없습니다.</p><?php endif; ?>
       </div>
+    </section>
+
+    <section class="admin-panel">
+      <div class="admin-panel__head">
+        <h2>댓글 많은 글</h2>
+        <span>관리 우선순위</span>
+      </div>
+      <div class="admin-rank">
+        <?php foreach ($hotCommentPosts as $i => $p): ?>
+          <a href="view.php?id=<?= (int)$p['id'] ?>">
+            <span><?= $i + 1 ?></span>
+            <strong><?= htmlspecialchars($p['title']) ?></strong>
+            <em><?= htmlspecialchars($p['nickname']) ?> · 댓글 <?= number_format((int)$p['comment_count']) ?> · 최근 <?= date('m.d H:i', strtotime($p['last_comment_at'])) ?></em>
+          </a>
+        <?php endforeach; ?>
+        <?php if (!$hotCommentPosts): ?><p class="admin-empty">댓글이 달린 글이 없습니다.</p><?php endif; ?>
+      </div>
+    </section>
+
+    <section class="admin-panel">
+      <div class="admin-panel__head">
+        <h2>최근 운영 로그</h2>
+        <span><?= $hasModerationLogs ? count($recentLogs) . '개' : 'migration 필요' ?></span>
+      </div>
+      <?php if (!$hasModerationLogs): ?>
+        <p class="admin-empty">운영 로그를 보려면 database/add_professor_features.sql 을 실행해주세요.</p>
+      <?php elseif (!$recentLogs): ?>
+        <p class="admin-empty">아직 운영 조치 기록이 없습니다.</p>
+      <?php else: ?>
+        <div class="admin-list admin-list--logs">
+          <?php foreach ($recentLogs as $log): ?>
+            <div class="admin-log">
+              <strong><?= htmlspecialchars($log['action']) ?> · <?= htmlspecialchars($log['target_type']) ?> #<?= (int)$log['target_id'] ?></strong>
+              <span><?= htmlspecialchars($log['admin_nickname']) ?> · <?= date('Y.m.d H:i', strtotime($log['created_at'])) ?></span>
+              <?php if (!empty($log['reason'])): ?><em><?= htmlspecialchars($log['reason']) ?></em><?php endif; ?>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
     </section>
 
     <section class="admin-panel">
@@ -315,5 +732,103 @@ require_once __DIR__ . '/../app/header.php';
     </section>
   </div>
 </section>
+
+<script>
+(function () {
+  document.addEventListener('submit', function (event) {
+    var form = event.target.closest('form[data-ajax-action="user_ban"], form[data-ajax-action="post_delete"]');
+    if (!form) return;
+    event.preventDefault();
+
+    var message = form.getAttribute('data-confirm') || '처리할까요?';
+    var ask = window.confirmAction ? window.confirmAction(message) : Promise.resolve(true);
+    ask.then(function (ok) {
+      if (!ok) return;
+
+      var button = form.querySelector('button[type="submit"]');
+      var originalText = button ? button.textContent : '';
+      if (button) {
+        button.disabled = true;
+        button.textContent = '처리중';
+      }
+
+      fetch(form.action, {
+        method: 'POST',
+        body: new FormData(form),
+        credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'fetch' }
+      })
+        .then(function (res) {
+          return res.json().then(function (json) {
+            if (!res.ok || !json.ok) throw new Error(json.message || '처리하지 못했어요.');
+            return json;
+          });
+        })
+        .then(function (json) {
+          if (form.dataset.ajaxAction === 'post_delete') {
+            var postRow = document.querySelector('[data-post-row="' + json.post_id + '"]');
+            var postCount = document.querySelector('[data-admin-post-count]');
+            var publishedCount = document.querySelector('[data-admin-published-count]');
+            var draftCount = document.querySelector('[data-admin-draft-count]');
+            if (postRow) {
+              postRow.style.opacity = '0.35';
+              setTimeout(function () {
+                postRow.remove();
+              }, 180);
+            }
+            if (postCount) postCount.textContent = Number(json.post_count).toLocaleString();
+            if (publishedCount) publishedCount.textContent = Number(json.published_count).toLocaleString();
+            if (draftCount) draftCount.textContent = Number(json.draft_count).toLocaleString();
+            window.showToast && window.showToast(json.message, false);
+            return;
+          }
+
+          var row = document.querySelector('[data-user-row="' + json.user_id + '"]');
+          var status = row && row.querySelector('[data-user-status]');
+          var mode = form.querySelector('input[name="ban_mode"]');
+          var reason = form.querySelector('input[name="reason"]');
+          var count = document.querySelector('[data-admin-banned-count]');
+
+          if (status) {
+            if (Number(json.is_banned) === 1) {
+              status.innerHTML = '<span class="admin-badge admin-badge--danger">밴</span>' +
+                (json.reason ? '<small class="admin-help"></small>' : '');
+              var help = status.querySelector('.admin-help');
+              if (help) help.textContent = json.reason;
+            } else {
+              status.innerHTML = '<span class="admin-badge">정상</span>';
+            }
+          }
+
+          if (mode) mode.value = Number(json.is_banned) === 1 ? 'unban' : 'ban';
+          form.setAttribute('data-confirm', Number(json.is_banned) === 1 ? '이 회원의 밴을 해제할까요?' : '이 회원을 강제 밴할까요?');
+          if (button) {
+            button.textContent = Number(json.is_banned) === 1 ? '해제' : '밴';
+            button.classList.toggle('is-danger', Number(json.is_banned) !== 1);
+          }
+          if (Number(json.is_banned) === 1 && reason) {
+            reason.remove();
+          } else if (Number(json.is_banned) === 0 && !form.querySelector('input[name="reason"]')) {
+            var input = document.createElement('input');
+            input.type = 'text';
+            input.name = 'reason';
+            input.maxLength = 255;
+            input.placeholder = '사유';
+            form.insertBefore(input, button);
+          }
+          if (count) count.textContent = Number(json.banned_count).toLocaleString();
+          window.showToast && window.showToast(json.message, false);
+        })
+        .catch(function (err) {
+          window.showToast ? window.showToast(err.message, true) : alert(err.message);
+          if (button) button.textContent = originalText;
+        })
+        .finally(function () {
+          if (button) button.disabled = false;
+        });
+    });
+  });
+})();
+</script>
 
 <?php require_once __DIR__ . '/../app/footer.php'; ?>

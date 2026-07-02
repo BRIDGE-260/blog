@@ -222,12 +222,14 @@ if ($action === 'comment_delete') {
     $commentId = (int)($_POST['comment_id'] ?? 0);
     $comment = getCommentInPost($conn, $commentId, $postId);
 
-    if (!$comment || (int)$comment['user_id'] !== $viewerId) {
+    $isCommentOwner = $comment && (int)$comment['user_id'] === $viewerId;
+    $isPostOwner = (int)$post['user_id'] === $viewerId;
+    if (!$comment || (!$isCommentOwner && !$isPostOwner)) {
         sendJson(['ok' => false, 'message' => 'not_found'], 404);
     }
 
-    $stmt = $conn->prepare("DELETE FROM comments WHERE id = ? AND post_id = ? AND user_id = ?");
-    $stmt->bind_param("iii", $commentId, $postId, $viewerId);
+    $stmt = $conn->prepare("DELETE FROM comments WHERE id = ? AND post_id = ?");
+    $stmt->bind_param("ii", $commentId, $postId);
     $stmt->execute();
     $stmt->close();
 

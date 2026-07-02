@@ -17,6 +17,21 @@ $sort     = ($_GET['sort'] ?? 'latest') === 'popular' ? 'popular' : 'latest';
 $perPage  = 6;
 $page     = max(1, (int)($_GET['page'] ?? 1));
 $ajax     = isset($_GET['ajax']);   // 카테고리/정렬/검색 클릭 시 피드만 교체(AJAX)
+$mainFeatureTitle = '20대와 60대에서 시작해, 모든 세대를 잇는 블로그';
+$mainFeatureText = '읽기 편한 글자 크기와 세대가 함께 나눌 수 있는 이야기로 서로의 일상을 연결합니다.';
+$siteSettingsResult = $conn->query("SHOW TABLES LIKE 'site_settings'");
+if ($siteSettingsResult && $siteSettingsResult->num_rows > 0) {
+    $settingsRows = $conn->query("SELECT setting_key, setting_value FROM site_settings WHERE setting_key IN ('main_feature_title', 'main_feature_text')");
+    if ($settingsRows) {
+        foreach ($settingsRows->fetch_all(MYSQLI_ASSOC) as $settingRow) {
+            if ($settingRow['setting_key'] === 'main_feature_title' && trim((string)$settingRow['setting_value']) !== '') {
+                $mainFeatureTitle = $settingRow['setting_value'];
+            } elseif ($settingRow['setting_key'] === 'main_feature_text' && trim((string)$settingRow['setting_value']) !== '') {
+                $mainFeatureText = $settingRow['setting_value'];
+            }
+        }
+    }
+}
 
 // ── ① 이웃 새 글 (내가 이웃 추가한 사람들의 최신 글) ──
 $stmt = $conn->prepare(
@@ -183,8 +198,8 @@ if (!$ajax) {
   <section class="bridge-panel" aria-label="BRIDGE 206 소개">
     <div>
       <span class="bridge-panel__eyebrow">BRIDGE 206</span>
-      <h1>20대와 60대에서 시작해, 모든 세대를 잇는 블로그</h1>
-      <p>읽기 편한 글자 크기와 세대가 함께 나눌 수 있는 이야기로 서로의 일상을 연결합니다.</p>
+      <h1><?= htmlspecialchars($mainFeatureTitle) ?></h1>
+      <p><?= htmlspecialchars($mainFeatureText) ?></p>
     </div>
     <div class="bridge-panel__question">
       <span>오늘의 연결 질문</span>

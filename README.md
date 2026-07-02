@@ -29,7 +29,7 @@ BRIDGE 206은 20대와 60대를 출발점으로 삼되, 특정 세대만 강조�
    database/blog_sample_data.sql
    ```
 
-   기존 DB를 유지한 채 갱신할 때는 `database/add_post_media_fields.sql`, `database/add_performance_indexes.sql`을 1회 실행합니다.
+   기존 DB를 유지한 채 갱신할 때는 `database/add_post_media_fields.sql`, `database/add_performance_indexes.sql`, `database/add_professor_features.sql`을 1회 실행합니다.
 
 4. 브라우저에서 접속합니다.
 
@@ -71,11 +71,13 @@ database=blog
 - 글쓰기/글수정: contenteditable 에디터, 본문 중간 이미지/동영상 삽입, 첨부 크기 조절, 태그 입력, 임시저장/발행, 공지글 상단 고정
 - 글 상세: 조회수, 공감, 스크랩, 공감자 목록, 링크 복사, 이미지 라이트박스, 동영상 재생, 댓글/답글, 댓글 수정/삭제, 이전/다음 글
 - 이웃: 이웃 추가/취소, 서로이웃 표시, 블로그 찾기
-- 내 소식: 댓글, 공감, 이웃 새 글, 방명록 알림과 항목별 읽음 처리
+- 이웃 접속 상태 표시, 이웃에게 쪽지 보내기
+- 내 소식: 댓글, 공감, 이웃 새 글, 방명록 알림과 항목별 읽음 처리, 이웃 새 글만 보기
 - 내 활동: 내가 댓글 단 글, 공감한 글, 스크랩한 글 모아보기
+- 블로그 현황: 시간대별/성별 방문 통계, CSV 엑셀 다운로드
 - 방명록: 블로그별 방명록 작성/삭제
 - 카테고리 관리: 추가, 이름 변경, 순서 변경, 삭제
-- 관리자 대시보드: 회원, 글, 댓글, 방명록, 공감, 스크랩, 방문 현황 읽기 전용 확인
+- 관리자 대시보드: 회원 관리자 권한, 회원 밴/해제, 글 공개/발행/공지 권한, 글/댓글 강제 삭제, 사이트 공지와 메인 문구 관리
 
 ## 접근성 / 테마
 
@@ -87,7 +89,7 @@ database=blog
 
 ## DB 테이블
 
-현재 실제 DB 기준 테이블은 14개입니다.
+현재 실제 DB 기준 테이블은 18개입니다.
 
 1. `blog_settings`
 2. `categories`
@@ -103,6 +105,10 @@ database=blog
 12. `tags`
 13. `users`
 14. `visit_logs`
+15. `messages` - 이웃 쪽지
+16. `visit_events` - 시간대/성별 방문 통계 이벤트
+17. `site_settings` - 사이트 공지와 메인 문구 설정
+18. `moderation_logs` - 관리자 운영 조치 기록
 
 관리자 권한은 별도 테이블이 아니라 `users.is_admin` 컬럼으로 관리합니다.
 

@@ -61,6 +61,10 @@ CREATE TABLE `blog_settings` (
   `post_list_style` varchar(20) NOT NULL DEFAULT 'card' COMMENT '글 목록 스타일(card/list)',
   `thumbnail_style` varchar(20) NOT NULL DEFAULT 'wide' COMMENT '목록 썸네일 스타일(wide/square/hidden)',
   `font_style` varchar(20) NOT NULL DEFAULT 'sans' COMMENT '폰트 프리셋(sans/serif/rounded)',
+  `blog_mood` varchar(30) NOT NULL DEFAULT 'daily' COMMENT '블로그 분위기 프리셋',
+  `welcome_message` varchar(120) DEFAULT NULL COMMENT '블로그 환영 문구',
+  `custom_link_label` varchar(40) DEFAULT NULL COMMENT '추천 링크 이름',
+  `custom_link_url` varchar(255) DEFAULT NULL COMMENT '추천 링크 주소',
   `show_intro` tinyint(1) NOT NULL DEFAULT 1 COMMENT '소개글 표시 여부',
   `show_post_summary` tinyint(1) NOT NULL DEFAULT 1 COMMENT '글 요약 표시 여부',
   `show_visit_count` tinyint(1) NOT NULL DEFAULT 1 COMMENT '방문자 수 표시 여부',
@@ -155,6 +159,50 @@ CREATE TABLE `neighbors` (
   CONSTRAINT `fk_neighbors_neighbor` FOREIGN KEY (`neighbor_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_neighbors_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `messages`
+--
+
+DROP TABLE IF EXISTS `messages`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `messages` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `sender_id` int(11) NOT NULL,
+  `receiver_id` int(11) NOT NULL,
+  `content` text NOT NULL,
+  `is_read` tinyint(1) NOT NULL DEFAULT 0,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_messages_receiver_read` (`receiver_id`,`is_read`,`created_at`),
+  KEY `idx_messages_pair` (`sender_id`,`receiver_id`,`created_at`),
+  CONSTRAINT `fk_messages_receiver` FOREIGN KEY (`receiver_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_messages_sender` FOREIGN KEY (`sender_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `moderation_logs`
+--
+
+DROP TABLE IF EXISTS `moderation_logs`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `moderation_logs` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `admin_id` int(11) NOT NULL,
+  `target_type` varchar(30) NOT NULL,
+  `target_id` int(11) NOT NULL,
+  `action` varchar(40) NOT NULL,
+  `reason` varchar(255) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_moderation_logs_created` (`created_at`),
+  KEY `idx_moderation_logs_target` (`target_type`,`target_id`),
+  CONSTRAINT `fk_moderation_logs_admin` FOREIGN KEY (`admin_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -304,7 +352,11 @@ CREATE TABLE `users` (
   `profile_image_stored` varchar(255) DEFAULT NULL COMMENT '프로필 이미지 저장 파일명(변환됨)',
   `created_at` datetime NOT NULL DEFAULT current_timestamp() COMMENT '가입 일시',
   `notifications_read_at` datetime NOT NULL DEFAULT '1970-01-01 00:00:00' COMMENT '마지막 소식 확인 시각',
+  `last_seen_at` datetime DEFAULT NULL COMMENT '최근 접속 시각',
   `is_admin` tinyint(1) NOT NULL DEFAULT 0 COMMENT 'admin flag',
+  `is_banned` tinyint(1) NOT NULL DEFAULT 0 COMMENT 'ban flag',
+  `banned_reason` varchar(255) DEFAULT NULL COMMENT '차단 사유',
+  `banned_at` datetime DEFAULT NULL COMMENT '차단 일시',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_users_email` (`email`),
   UNIQUE KEY `uq_users_nickname` (`nickname`)
@@ -327,6 +379,44 @@ CREATE TABLE `visit_logs` (
   UNIQUE KEY `uq_visit_user_date` (`user_id`,`visit_date`),
   CONSTRAINT `fk_visit_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=30 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `visit_events`
+--
+
+DROP TABLE IF EXISTS `visit_events`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `visit_events` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `owner_id` int(11) NOT NULL,
+  `viewer_id` int(11) DEFAULT NULL,
+  `visit_date` date NOT NULL,
+  `visit_hour` tinyint unsigned NOT NULL,
+  `viewer_gender` varchar(10) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_visit_events_owner_date_hour` (`owner_id`,`visit_date`,`visit_hour`),
+  KEY `idx_visit_events_owner_gender` (`owner_id`,`viewer_gender`),
+  CONSTRAINT `fk_visit_events_owner` FOREIGN KEY (`owner_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_visit_events_viewer` FOREIGN KEY (`viewer_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `site_settings`
+--
+
+DROP TABLE IF EXISTS `site_settings`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `site_settings` (
+  `setting_key` varchar(60) NOT NULL,
+  `setting_value` text DEFAULT NULL,
+  `updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
+  PRIMARY KEY (`setting_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 

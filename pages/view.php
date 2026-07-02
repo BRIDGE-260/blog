@@ -132,8 +132,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canView && $isLogin) {
     // 댓글 삭제 (본인 것만)
     elseif ($action === 'comment_delete') {
         $commentId = (int)($_POST['comment_id'] ?? 0);
-        $stmt = $conn->prepare("DELETE FROM comments WHERE id = ? AND user_id = ?");
-        $stmt->bind_param("ii", $commentId, $viewerId);
+        if ($isOwner) {
+            $stmt = $conn->prepare("DELETE FROM comments WHERE id = ? AND post_id = ?");
+            $stmt->bind_param("ii", $commentId, $postId);
+        } else {
+            $stmt = $conn->prepare("DELETE FROM comments WHERE id = ? AND user_id = ?");
+            $stmt->bind_param("ii", $commentId, $viewerId);
+        }
         $stmt->execute();
         $stmt->close();
     }
@@ -273,7 +278,7 @@ function renderMediaContent(string $content, array $mediaRows): array {
 
     foreach ($parts as $part) {
         if (!preg_match('/^\[\[(img|video):(\d+)(?:\|(\d+))?\]\]$/', $part, $m)) {
-            $html .= nl2br(htmlspecialchars($part));
+            $html .= nl2br(bridgeLinkifyText($part));
             continue;
         }
 
@@ -295,6 +300,22 @@ function renderMediaContent(string $content, array $mediaRows): array {
     }
 
     return [$html, $used];
+}
+
+function bridgeLinkifyText(string $text): string {
+    $escaped = htmlspecialchars($text);
+    return preg_replace_callback(
+        '~(?<!["\'>=])\b((?:https?://|www\.)[^\s<]+)~iu',
+        function ($m) {
+            $label = $m[1];
+            $href = stripos($label, 'www.') === 0 ? 'https://' . $label : $label;
+            $href = rtrim($href, ".,!?)]}");
+            $display = rtrim($label, ".,!?)]}");
+            $tail = substr($label, strlen($display));
+            return '<a href="' . htmlspecialchars($href, ENT_QUOTES) . '" target="_blank" rel="noopener noreferrer">' . htmlspecialchars($display) . '</a>' . htmlspecialchars($tail);
+        },
+        $escaped
+    );
 }
 
 $pageTitle = ($post && $canView ? $post['title'] : '글') . ' · BRIDGE 206';
@@ -394,8 +415,9 @@ require_once __DIR__ . '/../app/header.php';
   <!-- 댓글 -->
   <?php
   /** 댓글/답글 한 개 출력. $allowReply=true 면 답글 폼 노출(최상위 댓글에만). */
-  function renderComment($cm, $postId, $viewerId, $isLogin, $isReply = false) {
+  function renderComment($cm, $postId, $viewerId, $isLogin, $isPostOwner, $isReply = false) {
       $mine = $cm['user_id'] == $viewerId;
+      $canDelete = $mine || $isPostOwner;
       $canReply = !$isReply && $isLogin;
       ?>
       <div class="comment <?= $isReply ? 'comment--reply' : '' ?>" data-comment-id="<?= (int)$cm['id'] ?>" data-parent-id="<?= (int)($cm['parent_id'] ?? 0) ?>">
@@ -424,6 +446,9 @@ require_once __DIR__ . '/../app/header.php';
             <?php endif; ?>
             <?php if ($mine): ?>
               <button type="button" class="comment__edit-btn" data-edit-toggle>수정</button>
+            <?php endif; ?>
+            <?php if ($canDelete): ?>
+              <?php if (!$mine): ?><span class="comment__mod-label">작성자 관리</span><?php endif; ?>
               <form method="post" action="view.php?id=<?= (int)$postId ?>" class="comment__del" data-ajax-action="comment_delete" data-confirm="댓글을 삭제할까요?">
                 <input type="hidden" name="action" value="comment_delete">
                 <input type="hidden" name="post_id" value="<?= (int)$postId ?>">
@@ -455,11 +480,11 @@ require_once __DIR__ . '/../app/header.php';
     <p class="ajax-status" data-ajax-status role="status" aria-live="polite"></p>
 
     <?php foreach ($parents as $cm): ?>
-      <?php renderComment($cm, $post['id'], $viewerId, $isLogin, false); ?>
+      <?php renderComment($cm, $post['id'], $viewerId, $isLogin, $isOwner, false); ?>
       <?php if (!empty($children[$cm['id']])): ?>
         <div class="comment-replies" data-replies-for="<?= (int)$cm['id'] ?>">
           <?php foreach ($children[$cm['id']] as $rep): ?>
-            <?php renderComment($rep, $post['id'], $viewerId, $isLogin, true); ?>
+            <?php renderComment($rep, $post['id'], $viewerId, $isLogin, $isOwner, true); ?>
           <?php endforeach; ?>
         </div>
       <?php endif; ?>
@@ -502,6 +527,7 @@ require_once __DIR__ . '/../app/header.php';
 
     var postId = <?= (int)$post['id'] ?>;
     var isLogin = <?= $isLogin ? 'true' : 'false' ?>;
+    var canModerateComments = <?= $isOwner ? 'true' : 'false' ?>;
     var apiUrl = '../api/api.php';
     var commentTitle = document.querySelector('[data-comment-title]');
     var ajaxStatus = document.querySelector('[data-ajax-status]');
