@@ -337,17 +337,81 @@ $summary = [
     'total_visit' => adminCount($conn, "SELECT COALESCE(SUM(count), 0) AS cnt FROM visit_logs" . adminPeriodWhere('visit_date', $periodDays)),
 ];
 
+$userSearch = mb_substr(trim($_GET['user_q'] ?? ''), 0, 60);
+$userState = $_GET['user_state'] ?? 'all';
+if (!in_array($userState, ['all', 'admin', 'banned', 'normal'], true)) {
+    $userState = 'all';
+}
+
+$postSearch = mb_substr(trim($_GET['post_q'] ?? ''), 0, 80);
+$postStatusFilter = $_GET['post_status'] ?? 'all';
+if (!in_array($postStatusFilter, ['all', 'published', 'draft'], true)) {
+    $postStatusFilter = 'all';
+}
+$postVisibilityFilter = $_GET['post_visibility'] ?? 'any';
+if (!in_array($postVisibilityFilter, ['any', 'all', 'neighbor', 'private'], true)) {
+    $postVisibilityFilter = 'any';
+}
+
+$reportStatusFilter = $_GET['report_status'] ?? 'all';
+if (!in_array($reportStatusFilter, ['all', 'pending', 'reviewed', 'resolved'], true)) {
+    $reportStatusFilter = 'all';
+}
+$reportTypeFilter = $_GET['report_type'] ?? 'all';
+if (!in_array($reportTypeFilter, ['all', 'post', 'comment', 'guestbook', 'message'], true)) {
+    $reportTypeFilter = 'all';
+}
+
 $banSelect = $hasBanColumn
     ? "is_banned, banned_reason, banned_at"
     : "0 AS is_banned, NULL AS banned_reason, NULL AS banned_at";
+
+$userWhere = ["1 = 1"];
+$userTypes = "";
+$userParams = [];
+if ($userSearch !== '') {
+    $like = '%' . $userSearch . '%';
+    $userWhere[] = "(email LIKE ? OR name LIKE ? OR nickname LIKE ? OR blog_title LIKE ?)";
+    $userTypes .= "ssss";
+    array_push($userParams, $like, $like, $like, $like);
+}
+if ($userState === 'admin') {
+    $userWhere[] = "is_admin = 1";
+} elseif ($userState === 'banned' && $hasBanColumn) {
+    $userWhere[] = "is_banned = 1";
+} elseif ($userState === 'normal' && $hasBanColumn) {
+    $userWhere[] = "is_banned = 0";
+}
 $recentUsers = adminFetchAll(
     $conn,
     "SELECT id, email, name, nickname, blog_title, is_admin, $banSelect, created_at
      FROM users
+     WHERE " . implode(" AND ", $userWhere) . "
      ORDER BY created_at DESC, id DESC
-     LIMIT 12"
+     LIMIT 20",
+    $userTypes,
+    $userParams
 );
 
+$postWhere = ["1 = 1"];
+$postTypes = "";
+$postParams = [];
+if ($postSearch !== '') {
+    $like = '%' . $postSearch . '%';
+    $postWhere[] = "(p.title LIKE ? OR u.nickname LIKE ? OR p.content LIKE ?)";
+    $postTypes .= "sss";
+    array_push($postParams, $like, $like, $like);
+}
+if ($postStatusFilter !== 'all') {
+    $postWhere[] = "p.status = ?";
+    $postTypes .= "s";
+    $postParams[] = $postStatusFilter;
+}
+if ($postVisibilityFilter !== 'any') {
+    $postWhere[] = "p.visibility = ?";
+    $postTypes .= "s";
+    $postParams[] = $postVisibilityFilter;
+}
 $recentPosts = adminFetchAll(
     $conn,
     "SELECT p.id, p.title, p.status, p.visibility, p.is_pinned, p.view_count, p.created_at,
@@ -356,8 +420,11 @@ $recentPosts = adminFetchAll(
             (SELECT COUNT(*) FROM likes l WHERE l.post_id = p.id) AS like_count
      FROM posts p
      JOIN users u ON u.id = p.user_id
+     WHERE " . implode(" AND ", $postWhere) . "
      ORDER BY p.created_at DESC, p.id DESC
-     LIMIT 8"
+     LIMIT 12",
+    $postTypes,
+    $postParams
 );
 
 $siteSettings = [
@@ -433,14 +500,44 @@ $recentLogs = $hasModerationLogs ? adminFetchAll(
     $logParams
 ) : [];
 
+$reportWhere = ["1 = 1"];
+$reportTypes = "";
+$reportParams = [];
+if ($reportStatusFilter !== 'all') {
+    $reportWhere[] = "r.status = ?";
+    $reportTypes .= "s";
+    $reportParams[] = $reportStatusFilter;
+}
+if ($reportTypeFilter !== 'all') {
+    $reportWhere[] = "r.target_type = ?";
+    $reportTypes .= "s";
+    $reportParams[] = $reportTypeFilter;
+}
 $recentReports = $hasReports ? adminFetchAll(
     $conn,
     "SELECT r.id, r.target_type, r.target_id, r.reason, r.status, r.admin_note, r.created_at,
-            u.nickname AS reporter_nickname
+            u.nickname AS reporter_nickname,
+            rp.title AS report_post_title,
+            rc.post_id AS report_comment_post_id,
+            rc.content AS report_comment_content,
+            cp.title AS report_comment_post_title,
+            rg.owner_id AS report_guestbook_owner_id,
+            rg.content AS report_guestbook_content,
+            msg.sender_id AS report_message_sender_id,
+            msg.receiver_id AS report_message_receiver_id,
+            msg.content AS report_message_content
      FROM reports r
      JOIN users u ON u.id = r.reporter_id
+     LEFT JOIN posts rp ON r.target_type = 'post' AND rp.id = r.target_id
+     LEFT JOIN comments rc ON r.target_type = 'comment' AND rc.id = r.target_id
+     LEFT JOIN posts cp ON cp.id = rc.post_id
+     LEFT JOIN guestbook rg ON r.target_type = 'guestbook' AND rg.id = r.target_id
+     LEFT JOIN messages msg ON r.target_type = 'message' AND msg.id = r.target_id
+     WHERE " . implode(" AND ", $reportWhere) . "
      ORDER BY FIELD(r.status, 'pending', 'reviewed', 'resolved'), r.created_at DESC, r.id DESC
-     LIMIT 10"
+     LIMIT 12",
+    $reportTypes,
+    $reportParams
 ) : [];
 
 $recentGuestbook = adminFetchAll(
@@ -482,6 +579,199 @@ $visibilityLabels = ['all' => '전체공개', 'neighbor' => '이웃공개', 'pri
 $statusLabels = ['published' => '발행', 'draft' => '임시저장'];
 $reportStatusLabels = ['pending' => '대기', 'reviewed' => '확인', 'resolved' => '조치 완료'];
 $reportTargetLabels = ['post' => '글', 'comment' => '댓글', 'guestbook' => '방명록', 'message' => '쪽지'];
+function adminReportTargetUrl(array $report): string {
+    if ($report['target_type'] === 'post') {
+        return 'view.php?id=' . (int)$report['target_id'];
+    }
+    if ($report['target_type'] === 'comment' && !empty($report['report_comment_post_id'])) {
+        return 'view.php?id=' . (int)$report['report_comment_post_id'] . '#comment-' . (int)$report['target_id'];
+    }
+    if ($report['target_type'] === 'guestbook' && !empty($report['report_guestbook_owner_id'])) {
+        return 'guestbook.php?id=' . (int)$report['report_guestbook_owner_id'];
+    }
+    if ($report['target_type'] === 'message') {
+        return 'messages.php';
+    }
+    return '';
+}
+
+function adminReportTargetPreview(array $report): string {
+    if ($report['target_type'] === 'post') {
+        return (string)($report['report_post_title'] ?? '');
+    }
+    if ($report['target_type'] === 'comment') {
+        return (string)($report['report_comment_content'] ?? '');
+    }
+    if ($report['target_type'] === 'guestbook') {
+        return (string)($report['report_guestbook_content'] ?? '');
+    }
+    if ($report['target_type'] === 'message') {
+        return (string)($report['report_message_content'] ?? '');
+    }
+    return '';
+}
+
+function adminLogTargetUrl(array $log): string {
+    if ($log['target_type'] === 'user') {
+        return 'blog.php?id=' . (int)$log['target_id'];
+    }
+    if ($log['target_type'] === 'post') {
+        return 'view.php?id=' . (int)$log['target_id'];
+    }
+    if ($log['target_type'] === 'comment') {
+        return 'comments_manage.php?scope=all';
+    }
+    if ($log['target_type'] === 'report') {
+        return 'admin.php?report_status=all#reports';
+    }
+    return '';
+}
+
+function adminQueryWith(array $override): string {
+    $query = $_GET;
+    foreach ($override as $key => $value) {
+        if ($value === null) {
+            unset($query[$key]);
+        } else {
+            $query[$key] = $value;
+        }
+    }
+    return http_build_query($query);
+}
+$opsChecklist = [];
+if ($summary['pending_reports'] > 0) {
+    $opsChecklist[] = [
+        'level' => 'urgent',
+        'title' => '대기 신고 처리',
+        'body' => number_format($summary['pending_reports']) . '건의 신고가 아직 대기 상태입니다.',
+        'href' => 'admin.php?report_status=pending#reports',
+    ];
+}
+if ($summary['banned_users'] > 0) {
+    $opsChecklist[] = [
+        'level' => 'watch',
+        'title' => '밴 회원 상태 점검',
+        'body' => number_format($summary['banned_users']) . '명의 밴 회원이 있습니다.',
+        'href' => 'admin.php?user_state=banned#users',
+    ];
+}
+if ($summary['drafts'] > 0) {
+    $opsChecklist[] = [
+        'level' => 'watch',
+        'title' => '임시저장 글 확인',
+        'body' => number_format($summary['drafts']) . '개의 임시저장 글이 있습니다.',
+        'href' => 'admin.php?post_status=draft#posts',
+    ];
+}
+if ($summary['today_users'] > 0) {
+    $opsChecklist[] = [
+        'level' => 'info',
+        'title' => '신규 가입자 확인',
+        'body' => '오늘 ' . number_format($summary['today_users']) . '명이 가입했습니다.',
+        'href' => '#users',
+    ];
+}
+if ($hasModerationLogs && !$recentLogs) {
+    $opsChecklist[] = [
+        'level' => 'info',
+        'title' => '운영 로그 없음',
+        'body' => '선택한 조건의 운영 조치 기록이 없습니다.',
+        'href' => '#logs',
+    ];
+}
+if (!$opsChecklist) {
+    $opsChecklist[] = [
+        'level' => 'done',
+        'title' => '긴급 조치 없음',
+        'body' => '현재 우선 처리할 신고나 위험 항목이 없습니다.',
+        'href' => '#reports',
+    ];
+}
+
+if (($_GET['export'] ?? '') === 'admin') {
+    header('Content-Type: text/csv; charset=UTF-8');
+    $csvFilename = 'bridge206_admin_' . date('Ymd') . '.csv';
+    header('Content-Disposition: attachment; filename="' . $csvFilename . '"; filename*=UTF-8\'\'' . rawurlencode($csvFilename));
+    header('Content-Transfer-Encoding: binary');
+    echo "\xEF\xBB\xBF";
+    echo "sep=,\r\n";
+    $out = fopen('php://output', 'w');
+
+    fputcsv($out, ['구분', '항목', '값']);
+    fputcsv($out, ['요약', '기준', $periodLabel]);
+    fputcsv($out, ['요약', '회원', $summary['users']]);
+    fputcsv($out, ['요약', '밴 회원', $summary['banned_users']]);
+    fputcsv($out, ['요약', '오늘 가입', $summary['today_users']]);
+    fputcsv($out, ['요약', '전체 글', $summary['posts']]);
+    fputcsv($out, ['요약', '발행 글', $summary['published']]);
+    fputcsv($out, ['요약', '임시저장', $summary['drafts']]);
+    fputcsv($out, ['요약', '댓글', $summary['comments']]);
+    fputcsv($out, ['요약', '방명록', $summary['guestbook']]);
+    fputcsv($out, ['요약', '대기 신고', $summary['pending_reports']]);
+    fputcsv($out, ['요약', '공감', $summary['likes']]);
+    fputcsv($out, ['요약', '스크랩', $summary['scraps']]);
+    fputcsv($out, ['요약', '이웃 연결', $summary['neighbors']]);
+    fputcsv($out, ['요약', '태그', $summary['tags']]);
+    fputcsv($out, ['요약', '오늘 방문', $summary['today_visit']]);
+    fputcsv($out, ['요약', '누적 방문', $summary['total_visit']]);
+
+    foreach ($opsChecklist as $item) {
+        fputcsv($out, ['운영 체크리스트', $item['title'], $item['body']]);
+    }
+
+    fputcsv($out, []);
+    fputcsv($out, ['회원 관리', '번호', '닉네임', '이름', '이메일', '블로그', '상태', '관리자', '가입일']);
+    foreach ($recentUsers as $u) {
+        fputcsv($out, [
+            '회원 관리',
+            $u['id'],
+            $u['nickname'],
+            $u['name'],
+            $u['email'],
+            $u['blog_title'] ?: $u['nickname'] . '의 블로그',
+            (int)$u['is_banned'] === 1 ? '밴' : '정상',
+            (int)$u['is_admin'] === 1 ? '관리자' : '일반',
+            $u['created_at'],
+        ]);
+    }
+
+    fputcsv($out, []);
+    fputcsv($out, ['게시글 관리', '번호', '제목', '작성자', '상태', '공개', '조회', '공감', '댓글', '작성일']);
+    foreach ($recentPosts as $p) {
+        fputcsv($out, [
+            '게시글 관리',
+            $p['id'],
+            $p['title'],
+            $p['nickname'],
+            $statusLabels[$p['status']] ?? $p['status'],
+            $visibilityLabels[$p['visibility']] ?? $p['visibility'],
+            $p['view_count'],
+            $p['like_count'],
+            $p['comment_count'],
+            $p['created_at'],
+        ]);
+    }
+
+    fputcsv($out, []);
+    fputcsv($out, ['신고 관리', '번호', '대상', '대상 번호', '대상 내용', '신고자', '상태', '사유', '처리 메모', '접수일']);
+    foreach ($recentReports as $report) {
+        fputcsv($out, [
+            '신고 관리',
+            $report['id'],
+            $reportTargetLabels[$report['target_type']] ?? $report['target_type'],
+            $report['target_id'],
+            mb_strimwidth(adminReportTargetPreview($report), 0, 120, '...'),
+            $report['reporter_nickname'],
+            $reportStatusLabels[$report['status']] ?? $report['status'],
+            $report['reason'],
+            $report['admin_note'] ?? '',
+            $report['created_at'],
+        ]);
+    }
+
+    fclose($out);
+    exit;
+}
 
 $pageTitle = '관리자 대시보드 · BRIDGE 206';
 $pageClass = 'page--wide';
@@ -511,29 +801,121 @@ require_once __DIR__ . '/../app/header.php';
       <a class="<?= $summaryPeriod === '7' ? 'is-active' : '' ?>" href="admin.php?period=7">최근 7일</a>
       <a class="<?= $summaryPeriod === '30' ? 'is-active' : '' ?>" href="admin.php?period=30">최근 30일</a>
       <a class="<?= $summaryPeriod === 'all' ? 'is-active' : '' ?>" href="admin.php?period=all">전체 기간</a>
+      <?php $exportQuery = $_GET; $exportQuery['export'] = 'admin'; ?>
+      <a class="admin-period__download" href="admin.php?<?= htmlspecialchars(http_build_query($exportQuery)) ?>">CSV 다운로드</a>
     </nav>
   </div>
 
-  <div class="admin-stats">
-    <div><span><?= number_format($summary['users']) ?></span><strong>회원</strong></div>
-    <div><span data-admin-banned-count><?= number_format($summary['banned_users']) ?></span><strong>밴 회원</strong></div>
-    <div><span><?= number_format($summary['today_users']) ?></span><strong>오늘 가입</strong></div>
-    <div><span data-admin-post-count><?= number_format($summary['posts']) ?></span><strong>전체 글</strong></div>
-    <div><span data-admin-published-count><?= number_format($summary['published']) ?></span><strong>발행 글</strong></div>
-    <div><span data-admin-draft-count><?= number_format($summary['drafts']) ?></span><strong>임시저장</strong></div>
-    <div><span><?= number_format($summary['comments']) ?></span><strong>댓글</strong></div>
-    <div><span><?= number_format($summary['guestbook']) ?></span><strong>방명록</strong></div>
-    <div><span><?= number_format($summary['pending_reports']) ?></span><strong>대기 신고</strong></div>
-    <div><span><?= number_format($summary['likes']) ?></span><strong>공감</strong></div>
-    <div><span><?= number_format($summary['scraps']) ?></span><strong>스크랩</strong></div>
-    <div><span><?= number_format($summary['neighbors']) ?></span><strong>이웃 연결</strong></div>
-    <div><span><?= number_format($summary['tags']) ?></span><strong>태그</strong></div>
-    <div><span><?= number_format($summary['today_visit']) ?></span><strong>오늘 방문</strong></div>
-    <div><span><?= number_format($summary['total_visit']) ?></span><strong>누적 방문</strong></div>
+  <div class="admin-ops" aria-label="관리자 운영 현황">
+    <section class="admin-ops__group admin-ops__group--attention">
+      <div class="admin-ops__head">
+        <h2>주의 필요</h2>
+        <span>먼저 확인할 항목</span>
+      </div>
+      <div class="admin-ops__list">
+        <a class="admin-ops__metric is-critical" href="#reports">
+          <strong><?= number_format($summary['pending_reports']) ?></strong>
+          <span>대기 신고</span>
+          <em>신고 관리로 이동</em>
+        </a>
+        <a class="admin-ops__metric" href="#users">
+          <strong data-admin-banned-count><?= number_format($summary['banned_users']) ?></strong>
+          <span>밴 회원</span>
+          <em>회원 상태 점검</em>
+        </a>
+        <a class="admin-ops__metric" href="#posts">
+          <strong data-admin-draft-count><?= number_format($summary['drafts']) ?></strong>
+          <span>임시저장 글</span>
+          <em>발행 상태 확인</em>
+        </a>
+      </div>
+    </section>
+
+    <section class="admin-ops__group">
+      <div class="admin-ops__head">
+        <h2>콘텐츠</h2>
+        <span><?= htmlspecialchars($periodLabel) ?></span>
+      </div>
+      <div class="admin-ops__list">
+        <a class="admin-ops__metric" href="#posts">
+          <strong data-admin-post-count><?= number_format($summary['posts']) ?></strong>
+          <span>전체 글</span>
+          <em>발행 <span data-admin-published-count><?= number_format($summary['published']) ?></span> · 임시 <span data-admin-draft-count><?= number_format($summary['drafts']) ?></span></em>
+        </a>
+        <a class="admin-ops__metric" href="#comments">
+          <strong><?= number_format($summary['comments']) ?></strong>
+          <span>댓글</span>
+          <em>방명록 <?= number_format($summary['guestbook']) ?></em>
+        </a>
+        <a class="admin-ops__metric" href="#tags">
+          <strong><?= number_format($summary['tags']) ?></strong>
+          <span>태그</span>
+          <em>콘텐츠 분류</em>
+        </a>
+      </div>
+    </section>
+
+    <section class="admin-ops__group">
+      <div class="admin-ops__head">
+        <h2>회원/참여</h2>
+        <span>커뮤니티 활동</span>
+      </div>
+      <div class="admin-ops__list">
+        <a class="admin-ops__metric" href="#users">
+          <strong><?= number_format($summary['users']) ?></strong>
+          <span>회원</span>
+          <em>오늘 가입 <?= number_format($summary['today_users']) ?></em>
+        </a>
+        <div class="admin-ops__metric">
+          <strong><?= number_format($summary['likes'] + $summary['scraps']) ?></strong>
+          <span>반응</span>
+          <em>공감 <?= number_format($summary['likes']) ?> · 스크랩 <?= number_format($summary['scraps']) ?></em>
+        </div>
+        <div class="admin-ops__metric">
+          <strong><?= number_format($summary['neighbors']) ?></strong>
+          <span>이웃 연결</span>
+          <em>관계 활성도</em>
+        </div>
+      </div>
+    </section>
+
+    <section class="admin-ops__group">
+      <div class="admin-ops__head">
+        <h2>방문</h2>
+        <span>트래픽</span>
+      </div>
+      <div class="admin-ops__list">
+        <a class="admin-ops__metric" href="#blogs">
+          <strong><?= number_format($summary['today_visit']) ?></strong>
+          <span>오늘 방문</span>
+          <em>실시간 운영 참고</em>
+        </a>
+        <a class="admin-ops__metric" href="#blogs">
+          <strong><?= number_format($summary['total_visit']) ?></strong>
+          <span>누적 방문</span>
+          <em><?= htmlspecialchars($periodLabel) ?> 기준</em>
+        </a>
+      </div>
+    </section>
   </div>
 
+  <section class="admin-checklist" aria-label="오늘 운영 체크리스트">
+    <div class="admin-checklist__head">
+      <h2>오늘 운영 체크리스트</h2>
+      <span><?= count($opsChecklist) ?>개 항목</span>
+    </div>
+    <div class="admin-checklist__items">
+      <?php foreach ($opsChecklist as $item): ?>
+        <a class="admin-checklist__item admin-checklist__item--<?= htmlspecialchars($item['level']) ?>" href="<?= htmlspecialchars($item['href']) ?>">
+          <b><?= htmlspecialchars($item['title']) ?></b>
+          <span><?= htmlspecialchars($item['body']) ?></span>
+        </a>
+      <?php endforeach; ?>
+    </div>
+  </section>
+
   <div class="admin-grid">
-    <section class="admin-panel admin-panel--wide">
+    <section class="admin-panel admin-panel--wide" id="site-settings">
       <div class="admin-panel__head">
         <h2>사이트 구조 설정</h2>
         <span>공지 · 메인 문구 · 가입 정책</span>
@@ -563,11 +945,29 @@ require_once __DIR__ . '/../app/header.php';
       <?php endif; ?>
     </section>
 
-    <section class="admin-panel admin-panel--wide">
+    <section class="admin-panel admin-panel--wide" id="users">
       <div class="admin-panel__head">
-        <h2>최근 가입 회원</h2>
-        <span>신규 <?= count($recentUsers) ?>명</span>
+        <h2>회원 관리</h2>
+        <span>표시 <?= count($recentUsers) ?>명</span>
       </div>
+      <form class="admin-search" method="get" action="admin.php#users">
+        <input type="hidden" name="period" value="<?= htmlspecialchars($summaryPeriod) ?>">
+        <label>
+          <span>회원 검색</span>
+          <input type="text" name="user_q" value="<?= htmlspecialchars($userSearch) ?>" placeholder="닉네임, 이름, 이메일, 블로그">
+        </label>
+        <label>
+          <span>상태</span>
+          <select name="user_state">
+            <option value="all" <?= $userState === 'all' ? 'selected' : '' ?>>전체</option>
+            <option value="admin" <?= $userState === 'admin' ? 'selected' : '' ?>>관리자</option>
+            <option value="banned" <?= $userState === 'banned' ? 'selected' : '' ?>>밴 회원</option>
+            <option value="normal" <?= $userState === 'normal' ? 'selected' : '' ?>>정상 회원</option>
+          </select>
+        </label>
+        <button type="submit">검색</button>
+        <?php if ($userSearch !== '' || $userState !== 'all'): ?><a href="admin.php?period=<?= urlencode($summaryPeriod) ?>#users">초기화</a><?php endif; ?>
+      </form>
       <div class="admin-table-wrap">
         <table class="admin-table">
           <thead>
@@ -633,11 +1033,37 @@ require_once __DIR__ . '/../app/header.php';
       </div>
     </section>
 
-    <section class="admin-panel admin-panel--wide">
+    <section class="admin-panel admin-panel--wide" id="posts">
       <div class="admin-panel__head">
-        <h2>최근 게시글</h2>
-        <span>최신 <?= count($recentPosts) ?>개</span>
+        <h2>게시글 관리</h2>
+        <span>표시 <?= count($recentPosts) ?>개</span>
       </div>
+      <form class="admin-search" method="get" action="admin.php#posts">
+        <input type="hidden" name="period" value="<?= htmlspecialchars($summaryPeriod) ?>">
+        <label>
+          <span>글 검색</span>
+          <input type="text" name="post_q" value="<?= htmlspecialchars($postSearch) ?>" placeholder="제목, 작성자, 본문">
+        </label>
+        <label>
+          <span>발행 상태</span>
+          <select name="post_status">
+            <option value="all" <?= $postStatusFilter === 'all' ? 'selected' : '' ?>>전체</option>
+            <option value="published" <?= $postStatusFilter === 'published' ? 'selected' : '' ?>>발행</option>
+            <option value="draft" <?= $postStatusFilter === 'draft' ? 'selected' : '' ?>>임시</option>
+          </select>
+        </label>
+        <label>
+          <span>공개 범위</span>
+          <select name="post_visibility">
+            <option value="any" <?= $postVisibilityFilter === 'any' ? 'selected' : '' ?>>전체</option>
+            <option value="all" <?= $postVisibilityFilter === 'all' ? 'selected' : '' ?>>전체공개</option>
+            <option value="neighbor" <?= $postVisibilityFilter === 'neighbor' ? 'selected' : '' ?>>이웃공개</option>
+            <option value="private" <?= $postVisibilityFilter === 'private' ? 'selected' : '' ?>>비공개</option>
+          </select>
+        </label>
+        <button type="submit">검색</button>
+        <?php if ($postSearch !== '' || $postStatusFilter !== 'all' || $postVisibilityFilter !== 'any'): ?><a href="admin.php?period=<?= urlencode($summaryPeriod) ?>#posts">초기화</a><?php endif; ?>
+      </form>
       <div class="admin-table-wrap">
         <table class="admin-table">
           <thead>
@@ -699,7 +1125,7 @@ require_once __DIR__ . '/../app/header.php';
       </div>
     </section>
 
-    <section class="admin-panel">
+    <section class="admin-panel" id="comments">
       <div class="admin-panel__head">
         <h2>최근 댓글</h2>
         <a href="comments_manage.php?scope=all"><?= count($recentComments) ?>개 · 전체 관리</a>
@@ -724,16 +1150,41 @@ require_once __DIR__ . '/../app/header.php';
       </div>
     </section>
 
-    <section class="admin-panel admin-panel--wide">
+    <section class="admin-panel admin-panel--wide" id="reports">
       <div class="admin-panel__head">
         <h2>신고 관리</h2>
-        <span><?= $hasReports ? count($recentReports) . '개' : 'migration 필요' ?></span>
+        <span><?= $hasReports ? '표시 ' . count($recentReports) . '개' : 'migration 필요' ?></span>
       </div>
       <?php if (!$hasReports): ?>
         <p class="admin-empty">신고 기능을 사용하려면 database/add_professor_features.sql 을 먼저 실행해주세요.</p>
-      <?php elseif (!$recentReports): ?>
-        <p class="admin-empty">접수된 신고가 없습니다.</p>
       <?php else: ?>
+        <form class="admin-search" method="get" action="admin.php#reports">
+          <input type="hidden" name="period" value="<?= htmlspecialchars($summaryPeriod) ?>">
+          <label>
+            <span>신고 상태</span>
+            <select name="report_status">
+              <option value="all" <?= $reportStatusFilter === 'all' ? 'selected' : '' ?>>전체</option>
+              <option value="pending" <?= $reportStatusFilter === 'pending' ? 'selected' : '' ?>>대기</option>
+              <option value="reviewed" <?= $reportStatusFilter === 'reviewed' ? 'selected' : '' ?>>확인</option>
+              <option value="resolved" <?= $reportStatusFilter === 'resolved' ? 'selected' : '' ?>>조치 완료</option>
+            </select>
+          </label>
+          <label>
+            <span>신고 대상</span>
+            <select name="report_type">
+              <option value="all" <?= $reportTypeFilter === 'all' ? 'selected' : '' ?>>전체</option>
+              <option value="post" <?= $reportTypeFilter === 'post' ? 'selected' : '' ?>>글</option>
+              <option value="comment" <?= $reportTypeFilter === 'comment' ? 'selected' : '' ?>>댓글</option>
+              <option value="guestbook" <?= $reportTypeFilter === 'guestbook' ? 'selected' : '' ?>>방명록</option>
+              <option value="message" <?= $reportTypeFilter === 'message' ? 'selected' : '' ?>>쪽지</option>
+            </select>
+          </label>
+          <button type="submit">필터</button>
+          <?php if ($reportStatusFilter !== 'all' || $reportTypeFilter !== 'all'): ?><a href="admin.php?period=<?= urlencode($summaryPeriod) ?>#reports">초기화</a><?php endif; ?>
+        </form>
+        <?php if (!$recentReports): ?>
+          <p class="admin-empty">조건에 맞는 신고가 없습니다.</p>
+        <?php else: ?>
         <div class="admin-table-wrap">
           <table class="admin-table">
             <thead>
@@ -749,17 +1200,24 @@ require_once __DIR__ . '/../app/header.php';
             </thead>
             <tbody>
               <?php foreach ($recentReports as $report): ?>
+                <?php
+                  $targetUrl = adminReportTargetUrl($report);
+                  $targetLabel = ($reportTargetLabels[$report['target_type']] ?? $report['target_type']) . ' #' . (int)$report['target_id'];
+                  $targetPreview = mb_strimwidth(adminReportTargetPreview($report), 0, 80, '...');
+                ?>
                 <tr>
                   <td><?= (int)$report['id'] ?></td>
                   <td>
-                    <?php if ($report['target_type'] === 'post'): ?>
-                      <a href="view.php?id=<?= (int)$report['target_id'] ?>">글 #<?= (int)$report['target_id'] ?></a>
-                    <?php elseif ($report['target_type'] === 'guestbook'): ?>
-                      <span>방명록 #<?= (int)$report['target_id'] ?></span>
-                    <?php elseif ($report['target_type'] === 'comment'): ?>
-                      <span>댓글 #<?= (int)$report['target_id'] ?></span>
+                    <?php if ($targetUrl !== ''): ?>
+                      <a class="admin-target" href="<?= htmlspecialchars($targetUrl) ?>">
+                        <strong><?= htmlspecialchars($targetLabel) ?></strong>
+                        <?php if ($targetPreview !== ''): ?><span><?= htmlspecialchars($targetPreview) ?></span><?php endif; ?>
+                      </a>
                     <?php else: ?>
-                      <span><?= htmlspecialchars($reportTargetLabels[$report['target_type']] ?? $report['target_type']) ?> #<?= (int)$report['target_id'] ?></span>
+                      <span class="admin-target">
+                        <strong><?= htmlspecialchars($targetLabel) ?></strong>
+                        <?php if ($targetPreview !== ''): ?><span><?= htmlspecialchars($targetPreview) ?></span><?php endif; ?>
+                      </span>
                     <?php endif; ?>
                   </td>
                   <td><?= htmlspecialchars($report['reporter_nickname']) ?></td>
@@ -784,10 +1242,11 @@ require_once __DIR__ . '/../app/header.php';
             </tbody>
           </table>
         </div>
+        <?php endif; ?>
       <?php endif; ?>
     </section>
 
-    <section class="admin-panel">
+    <section class="admin-panel" id="hot-comments">
       <div class="admin-panel__head">
         <h2>댓글 많은 글</h2>
         <span>관리 우선순위</span>
@@ -804,18 +1263,18 @@ require_once __DIR__ . '/../app/header.php';
       </div>
     </section>
 
-    <section class="admin-panel">
+    <section class="admin-panel" id="logs">
       <div class="admin-panel__head">
         <h2>최근 운영 로그</h2>
         <span><?= $hasModerationLogs ? count($recentLogs) . '개' : 'migration 필요' ?></span>
       </div>
       <?php if ($hasModerationLogs): ?>
         <div class="admin-filter">
-          <a class="<?= $logFilter === 'all' ? 'is-active' : '' ?>" href="admin.php?log_filter=all">전체</a>
-          <a class="<?= $logFilter === 'user' ? 'is-active' : '' ?>" href="admin.php?log_filter=user">회원</a>
-          <a class="<?= $logFilter === 'post' ? 'is-active' : '' ?>" href="admin.php?log_filter=post">글</a>
-          <a class="<?= $logFilter === 'comment' ? 'is-active' : '' ?>" href="admin.php?log_filter=comment">댓글</a>
-          <a class="<?= $logFilter === 'report' ? 'is-active' : '' ?>" href="admin.php?log_filter=report">신고</a>
+          <a class="<?= $logFilter === 'all' ? 'is-active' : '' ?>" href="admin.php?<?= htmlspecialchars(adminQueryWith(['log_filter' => 'all', 'export' => null])) ?>#logs">전체</a>
+          <a class="<?= $logFilter === 'user' ? 'is-active' : '' ?>" href="admin.php?<?= htmlspecialchars(adminQueryWith(['log_filter' => 'user', 'export' => null])) ?>#logs">회원</a>
+          <a class="<?= $logFilter === 'post' ? 'is-active' : '' ?>" href="admin.php?<?= htmlspecialchars(adminQueryWith(['log_filter' => 'post', 'export' => null])) ?>#logs">글</a>
+          <a class="<?= $logFilter === 'comment' ? 'is-active' : '' ?>" href="admin.php?<?= htmlspecialchars(adminQueryWith(['log_filter' => 'comment', 'export' => null])) ?>#logs">댓글</a>
+          <a class="<?= $logFilter === 'report' ? 'is-active' : '' ?>" href="admin.php?<?= htmlspecialchars(adminQueryWith(['log_filter' => 'report', 'export' => null])) ?>#logs">신고</a>
         </div>
       <?php endif; ?>
       <?php if (!$hasModerationLogs): ?>
@@ -825,10 +1284,18 @@ require_once __DIR__ . '/../app/header.php';
       <?php else: ?>
         <div class="admin-list admin-list--logs">
           <?php foreach ($recentLogs as $log): ?>
+            <?php
+              $logTargetUrl = adminLogTargetUrl($log);
+              $logTargetText = ($logTargetLabels[$log['target_type']] ?? $log['target_type']) . ' #' . (int)$log['target_id'];
+            ?>
             <div class="admin-log">
               <div class="admin-log__top">
                 <strong><?= htmlspecialchars($logActionLabels[$log['action']] ?? $log['action']) ?></strong>
-                <span><?= htmlspecialchars($logTargetLabels[$log['target_type']] ?? $log['target_type']) ?> #<?= (int)$log['target_id'] ?></span>
+                <?php if ($logTargetUrl !== ''): ?>
+                  <a href="<?= htmlspecialchars($logTargetUrl) ?>"><?= htmlspecialchars($logTargetText) ?></a>
+                <?php else: ?>
+                  <span><?= htmlspecialchars($logTargetText) ?></span>
+                <?php endif; ?>
               </div>
               <span><?= htmlspecialchars($log['admin_nickname']) ?> · <?= date('Y.m.d H:i', strtotime($log['created_at'])) ?></span>
               <?php if (!empty($log['reason'])): ?><em>메모: <?= htmlspecialchars($log['reason']) ?></em><?php endif; ?>
@@ -838,7 +1305,7 @@ require_once __DIR__ . '/../app/header.php';
       <?php endif; ?>
     </section>
 
-    <section class="admin-panel">
+    <section class="admin-panel" id="blogs">
       <div class="admin-panel__head">
         <h2>최근 방명록</h2>
         <span><?= count($recentGuestbook) ?>개</span>
@@ -855,7 +1322,7 @@ require_once __DIR__ . '/../app/header.php';
       </div>
     </section>
 
-    <section class="admin-panel">
+    <section class="admin-panel" id="tags">
       <div class="admin-panel__head">
         <h2>인기 태그</h2>
         <span>TOP <?= count($topTags) ?></span>
@@ -868,7 +1335,7 @@ require_once __DIR__ . '/../app/header.php';
       </div>
     </section>
 
-    <section class="admin-panel">
+    <section class="admin-panel" id="top-blogs">
       <div class="admin-panel__head">
         <h2>방문 많은 블로그</h2>
         <span>TOP <?= count($topBlogs) ?></span>
@@ -921,18 +1388,21 @@ require_once __DIR__ . '/../app/header.php';
         .then(function (json) {
           if (form.dataset.ajaxAction === 'post_delete') {
             var postRow = document.querySelector('[data-post-row="' + json.post_id + '"]');
-            var postCount = document.querySelector('[data-admin-post-count]');
-            var publishedCount = document.querySelector('[data-admin-published-count]');
-            var draftCount = document.querySelector('[data-admin-draft-count]');
             if (postRow) {
               postRow.style.opacity = '0.35';
               setTimeout(function () {
                 postRow.remove();
               }, 180);
             }
-            if (postCount) postCount.textContent = Number(json.post_count).toLocaleString();
-            if (publishedCount) publishedCount.textContent = Number(json.published_count).toLocaleString();
-            if (draftCount) draftCount.textContent = Number(json.draft_count).toLocaleString();
+            document.querySelectorAll('[data-admin-post-count]').forEach(function (el) {
+              el.textContent = Number(json.post_count).toLocaleString();
+            });
+            document.querySelectorAll('[data-admin-published-count]').forEach(function (el) {
+              el.textContent = Number(json.published_count).toLocaleString();
+            });
+            document.querySelectorAll('[data-admin-draft-count]').forEach(function (el) {
+              el.textContent = Number(json.draft_count).toLocaleString();
+            });
             window.showToast && window.showToast(json.message, false);
             return;
           }

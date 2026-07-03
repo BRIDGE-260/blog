@@ -208,6 +208,7 @@ if ($canView) {
 // 상세 데이터 (태그 / 공감 / 댓글 / 이전·다음) — 볼 수 있을 때만 조회
 $tags = []; $images = []; $likeCount = 0; $likedByMe = false; $scrapped = false;
 $comments = []; $parents = []; $children = []; $prev = $next = null;
+$readMinutes = 1; $readChars = 0;
 if ($canView) {
     // 태그 (id 포함 — 클릭 시 메인 태그 필터로 이동)
     $stmt = $conn->prepare(
@@ -262,6 +263,11 @@ if ($canView) {
         if ($c['parent_id'] === null) $parents[] = $c;
         else $children[$c['parent_id']][] = $c;
     }
+
+    $plainContent = preg_replace('/\[\[(?:img|video):\d+(?:\|\d+)?\]\]/', ' ', $post['content']);
+    $plainContent = trim(preg_replace('/\s+/u', ' ', strip_tags($plainContent)));
+    $readChars = mb_strlen($plainContent, 'UTF-8');
+    $readMinutes = max(1, (int)ceil($readChars / 500));
 
     // 같은 블로그(작성자)의 이전/다음 발행글
     $stmt = $conn->prepare(
@@ -391,6 +397,20 @@ require_once __DIR__ . '/../app/header.php';
       <span><?= date('Y.m.d H:i', strtotime($post['created_at'])) ?> · 조회 <?= (int)$post['view_count'] ?></span>
     </div>
 
+    <div class="post-reader" data-reader-tools>
+      <div class="post-reader__progress" aria-hidden="true"><span data-read-progress></span></div>
+      <div class="post-reader__meta">
+        <span>읽기 <?= (int)$readMinutes ?>분</span>
+        <span>본문 <?= number_format($readChars) ?>자</span>
+        <span>댓글 <?= number_format(count($comments)) ?>개</span>
+      </div>
+      <div class="post-reader__actions">
+        <a href="#postBody">본문</a>
+        <a href="#comments">댓글</a>
+        <button type="button" data-scroll-top>맨 위</button>
+      </div>
+    </div>
+
     <?php if ($isOwner || $post['visibility'] !== 'all'): ?>
       <div class="visibility-badges visibility-badges--post">
         <?php if ($post['status'] === 'draft'): ?><b class="visibility-badge visibility-badge--draft">임시저장</b><?php endif; ?>
@@ -407,7 +427,7 @@ require_once __DIR__ . '/../app/header.php';
     <?php endif; ?>
 
     <?php [$contentHtml, $usedImg] = renderMediaContent($post['content'], $images); ?>
-    <div class="post__content"><?= $contentHtml ?></div>
+    <div class="post__content" id="postBody"><?= $contentHtml ?></div>
 
     <?php
       // 본문에 토큰으로 넣지 않은(남은) 이미지는 아래에 갤러리로 보여줌(예전 글·미삽입분 대비)
@@ -483,7 +503,7 @@ require_once __DIR__ . '/../app/header.php';
       $canDelete = $mine || $isPostOwner;
       $canReply = !$isReply && $isLogin;
       ?>
-      <div class="comment <?= $isReply ? 'comment--reply' : '' ?>" data-comment-id="<?= (int)$cm['id'] ?>" data-parent-id="<?= (int)($cm['parent_id'] ?? 0) ?>">
+      <div class="comment <?= $isReply ? 'comment--reply' : '' ?>" id="comment-<?= (int)$cm['id'] ?>" data-comment-id="<?= (int)$cm['id'] ?>" data-parent-id="<?= (int)($cm['parent_id'] ?? 0) ?>">
         <div class="comment__head">
           <span class="comment__name"><?= htmlspecialchars($cm['nickname']) ?>님</span>
           <span class="comment__date"><?= date('Y.m.d H:i', strtotime($cm['created_at'])) ?></span>
@@ -546,7 +566,7 @@ require_once __DIR__ . '/../app/header.php';
       <?php
   }
   ?>
-  <section class="comments">
+  <section class="comments" id="comments">
     <h2 data-comment-title>댓글 <?= count($comments) ?></h2>
     <p class="ajax-status" data-ajax-status role="status" aria-live="polite"></p>
 
@@ -602,6 +622,8 @@ require_once __DIR__ . '/../app/header.php';
     var apiUrl = '../api/api.php';
     var commentTitle = document.querySelector('[data-comment-title]');
     var ajaxStatus = document.querySelector('[data-ajax-status]');
+    var readProgress = document.querySelector('[data-read-progress]');
+    var scrollTopBtn = document.querySelector('[data-scroll-top]');
     var messages = {
       empty_content: '내용을 입력해 주세요.',
       content_too_long: '댓글은 500자까지 입력할 수 있어요.',
@@ -652,6 +674,26 @@ require_once __DIR__ . '/../app/header.php';
           if (ajaxStatus.textContent === text) ajaxStatus.textContent = '';
         }, 1800);
       }
+    }
+
+    function updateReadProgress() {
+      if (!readProgress) return;
+      var body = document.getElementById('postBody');
+      if (!body) return;
+      var start = body.offsetTop;
+      var end = start + body.offsetHeight - window.innerHeight;
+      var progress = end <= start ? 1 : (window.scrollY - start) / (end - start);
+      progress = Math.max(0, Math.min(1, progress));
+      readProgress.style.width = Math.round(progress * 100) + '%';
+    }
+
+    window.addEventListener('scroll', updateReadProgress, { passive: true });
+    window.addEventListener('resize', updateReadProgress);
+    updateReadProgress();
+    if (scrollTopBtn) {
+      scrollTopBtn.addEventListener('click', function () {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
     }
 
     function updateCommentCounter(textarea) {

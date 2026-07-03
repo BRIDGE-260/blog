@@ -278,21 +278,91 @@ require_once __DIR__ . '/../app/header.php';
     </nav>
   </div>
 
-  <div class="stats-sum dashboard-metrics">
-    <div class="stats-sum__box"><span><?= number_format($todayCount) ?></span>오늘 방문</div>
-    <div class="stats-sum__box"><span><?= number_format($totalVisit) ?></span>누적 방문</div>
-    <div class="stats-sum__box"><span><?= number_format($publishedCount) ?></span>발행 글</div>
-    <div class="stats-sum__box"><span><?= number_format($draftCount) ?></span>임시저장</div>
-    <div class="stats-sum__box"><span><?= number_format($totalViews) ?></span>글 조회</div>
-    <div class="stats-sum__box"><span><?= number_format($totalLikes) ?></span>공감</div>
-    <div class="stats-sum__box"><span><?= number_format($totalComments) ?></span>댓글</div>
-    <div class="stats-sum__box"><span><?= number_format($totalScraps) ?></span>스크랩</div>
-    <div class="stats-sum__box"><span><?= number_format($neighborCount) ?></span>나를 추가한 이웃</div>
-    <div class="stats-sum__box"><span><?= number_format($guestbookCount) ?></span>방명록</div>
+  <div class="blog-ops" aria-label="블로그 운영 현황">
+    <section class="blog-ops__group blog-ops__group--focus">
+      <div class="blog-ops__head">
+        <h2>오늘 확인</h2>
+        <span>새 반응과 방문</span>
+      </div>
+      <div class="blog-ops__list">
+        <a class="blog-ops__metric is-primary" href="#visits">
+          <strong><?= number_format($todayCount) ?></strong>
+          <span>오늘 방문</span>
+          <em>최근 7일 흐름 보기</em>
+        </a>
+        <a class="blog-ops__metric" href="#reactions">
+          <strong><?= number_format($newComments + $newLikes) ?></strong>
+          <span>새 반응</span>
+          <em>댓글 <?= number_format($newComments) ?> · 공감 <?= number_format($newLikes) ?></em>
+        </a>
+        <a class="blog-ops__metric" href="blog.php?id=<?= $userId ?>&status=draft">
+          <strong><?= number_format($draftCount) ?></strong>
+          <span>임시저장</span>
+          <em>이어 쓸 글 확인</em>
+        </a>
+      </div>
+    </section>
+
+    <section class="blog-ops__group">
+      <div class="blog-ops__head">
+        <h2>콘텐츠</h2>
+        <span>글 운영 상태</span>
+      </div>
+      <div class="blog-ops__list">
+        <a class="blog-ops__metric" href="#top-posts">
+          <strong><?= number_format($publishedCount) ?></strong>
+          <span>발행 글</span>
+          <em>조회 <?= number_format($totalViews) ?></em>
+        </a>
+        <a class="blog-ops__metric" href="#categories">
+          <strong><?= number_format(count($categoryStats)) ?></strong>
+          <span>성과 카테고리</span>
+          <em>주제별 반응 비교</em>
+        </a>
+      </div>
+    </section>
+
+    <section class="blog-ops__group">
+      <div class="blog-ops__head">
+        <h2>반응</h2>
+        <span>독자 참여</span>
+      </div>
+      <div class="blog-ops__list">
+        <a class="blog-ops__metric" href="#reactions">
+          <strong><?= number_format($totalLikes + $totalComments + $totalScraps) ?></strong>
+          <span>전체 반응</span>
+          <em>공감 <?= number_format($totalLikes) ?> · 댓글 <?= number_format($totalComments) ?> · 스크랩 <?= number_format($totalScraps) ?></em>
+        </a>
+        <a class="blog-ops__metric" href="#regulars">
+          <strong><?= number_format($neighborCount) ?></strong>
+          <span>나를 추가한 이웃</span>
+          <em>방명록 <?= number_format($guestbookCount) ?></em>
+        </a>
+      </div>
+    </section>
+
+    <section class="blog-ops__group">
+      <div class="blog-ops__head">
+        <h2>방문자</h2>
+        <span>관계 흐름</span>
+      </div>
+      <div class="blog-ops__list">
+        <a class="blog-ops__metric" href="#visitors">
+          <strong><?= number_format($totalVisit) ?></strong>
+          <span>누적 방문</span>
+          <em>최근 방문자 <?= number_format(count($recentVisitors)) ?>명</em>
+        </a>
+        <a class="blog-ops__metric" href="#regulars">
+          <strong><?= number_format(count($frequentNeighbors)) ?></strong>
+          <span>자주 오는 이웃</span>
+          <em>관계 관리 참고</em>
+        </a>
+      </div>
+    </section>
   </div>
 
   <div class="dashboard-grid">
-    <section class="dashboard-panel dashboard-panel--wide">
+    <section class="dashboard-panel dashboard-panel--wide" id="visits">
       <div class="dashboard-panel__head">
         <h2>최근 7일 방문</h2>
         <span>오늘 기준</span>
@@ -351,7 +421,7 @@ require_once __DIR__ . '/../app/header.php';
       <?php endif; ?>
     </section>
 
-    <section class="dashboard-panel">
+    <section class="dashboard-panel" id="reactions">
       <div class="dashboard-panel__head">
         <h2>받은 반응</h2>
         <span>내 글 기준</span>
@@ -363,7 +433,7 @@ require_once __DIR__ . '/../app/header.php';
       <p class="dashboard-note">새로 들어온 알림은 소식 화면에서 따로 확인할 수 있어요.</p>
     </section>
 
-    <section class="dashboard-panel">
+    <section class="dashboard-panel" id="top-posts">
       <div class="dashboard-panel__head">
         <h2>인기 글</h2>
         <span>조회순</span>
@@ -408,7 +478,7 @@ require_once __DIR__ . '/../app/header.php';
       <?php endif; ?>
     </section>
 
-    <section class="dashboard-panel">
+    <section class="dashboard-panel" id="visitors">
       <div class="dashboard-panel__head">
         <h2>최근 방문자</h2>
         <span>회원 방문</span>
@@ -428,7 +498,7 @@ require_once __DIR__ . '/../app/header.php';
       <?php endif; ?>
     </section>
 
-    <section class="dashboard-panel">
+    <section class="dashboard-panel" id="regulars">
       <div class="dashboard-panel__head">
         <h2>자주 오는 이웃</h2>
         <span>내 이웃 기준</span>
@@ -450,7 +520,7 @@ require_once __DIR__ . '/../app/header.php';
       <?php endif; ?>
     </section>
 
-    <section class="dashboard-panel">
+    <section class="dashboard-panel" id="categories">
       <div class="dashboard-panel__head">
         <h2>카테고리 성과</h2>
         <span>조회·반응 기준</span>
