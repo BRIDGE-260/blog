@@ -131,13 +131,28 @@ $adminId = (int)$_SESSION['user_id'];
 $hasSiteSettings = adminTableExists($conn, 'site_settings');
 $hasModerationLogs = adminTableExists($conn, 'moderation_logs');
 $hasBanColumn = adminColumnExists($conn, 'users', 'is_banned');
+$hasReports = adminTableExists($conn, 'reports');
 $isAjaxRequest = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'fetch';
+$summaryPeriod = $_GET['period'] ?? '30';
+if (!in_array($summaryPeriod, ['7', '30', 'all'], true)) {
+    $summaryPeriod = '30';
+}
+$periodDays = $summaryPeriod === 'all' ? 0 : (int)$summaryPeriod;
+$periodLabel = $summaryPeriod === 'all' ? '전체 기간' : '최근 ' . $periodDays . '일';
 
 function adminJson(array $data, int $status = 200): void {
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode($data, JSON_UNESCAPED_UNICODE);
     exit;
+}
+
+function adminPeriodWhere(string $column, int $periodDays): string {
+    return $periodDays > 0 ? " WHERE $column >= CURDATE() - INTERVAL " . ($periodDays - 1) . " DAY" : "";
+}
+
+function adminPeriodAnd(string $column, int $periodDays): string {
+    return $periodDays > 0 ? " AND $column >= CURDATE() - INTERVAL " . ($periodDays - 1) . " DAY" : "";
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -264,6 +279,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $adminMessage = '이미 삭제됐거나 찾을 수 없는 댓글입니다.';
             }
         }
+    } elseif ($adminAction === 'report_status' && $hasReports) {
+        $reportId = (int)($_POST['report_id'] ?? 0);
+        $status = $_POST['status'] ?? 'pending';
+        $adminNote = mb_substr(trim($_POST['admin_note'] ?? ''), 0, 255);
+        if (!in_array($status, ['pending', 'reviewed', 'resolved'], true)) {
+            $status = 'pending';
+        }
+        if ($reportId > 0) {
+            $stmt = $conn->prepare("UPDATE reports SET status = ?, admin_note = ? WHERE id = ?");
+            $stmt->bind_param("ssi", $status, $adminNote, $reportId);
+            $stmt->execute();
+            $stmt->close();
+            adminLogAction($conn, $hasModerationLogs, $adminId, 'report', $reportId, 'update_report_status', $adminNote);
+            $adminMessage = '신고 처리 상태를 저장했어요.';
+        }
     } elseif ($adminAction === 'site_settings' && $hasSiteSettings) {
         $siteNotice = mb_substr(trim($_POST['site_notice'] ?? ''), 0, 500);
         $mainFeatureTitle = mb_substr(trim($_POST['main_feature_title'] ?? ''), 0, 100);
@@ -290,20 +320,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $summary = [
-    'users' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM users"),
+    'users' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM users" . adminPeriodWhere('created_at', $periodDays)),
     'banned_users' => $hasBanColumn ? adminCount($conn, "SELECT COUNT(*) AS cnt FROM users WHERE is_banned = 1") : 0,
     'today_users' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM users WHERE DATE(created_at) = CURDATE()"),
-    'posts' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM posts"),
-    'published' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM posts WHERE status = 'published'"),
-    'drafts' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM posts WHERE status = 'draft'"),
-    'comments' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM comments"),
-    'guestbook' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM guestbook"),
-    'likes' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM likes"),
-    'scraps' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM scraps"),
-    'neighbors' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM neighbors"),
+    'posts' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM posts" . adminPeriodWhere('created_at', $periodDays)),
+    'published' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM posts WHERE status = 'published'" . adminPeriodAnd('created_at', $periodDays)),
+    'drafts' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM posts WHERE status = 'draft'" . adminPeriodAnd('created_at', $periodDays)),
+    'comments' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM comments" . adminPeriodWhere('created_at', $periodDays)),
+    'guestbook' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM guestbook" . adminPeriodWhere('created_at', $periodDays)),
+    'pending_reports' => $hasReports ? adminCount($conn, "SELECT COUNT(*) AS cnt FROM reports WHERE status = 'pending'" . adminPeriodAnd('created_at', $periodDays)) : 0,
+    'likes' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM likes" . adminPeriodWhere('created_at', $periodDays)),
+    'scraps' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM scraps" . adminPeriodWhere('created_at', $periodDays)),
+    'neighbors' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM neighbors" . adminPeriodWhere('created_at', $periodDays)),
     'tags' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM tags"),
     'today_visit' => adminCount($conn, "SELECT COALESCE(SUM(count), 0) AS cnt FROM visit_logs WHERE visit_date = CURDATE()"),
-    'total_visit' => adminCount($conn, "SELECT COALESCE(SUM(count), 0) AS cnt FROM visit_logs"),
+    'total_visit' => adminCount($conn, "SELECT COALESCE(SUM(count), 0) AS cnt FROM visit_logs" . adminPeriodWhere('visit_date', $periodDays)),
 ];
 
 $banSelect = $hasBanColumn
@@ -367,13 +398,49 @@ $hotCommentPosts = adminFetchAll(
      LIMIT 5"
 );
 
+$logActionLabels = [
+    'grant_admin' => '관리자 권한 부여',
+    'revoke_admin' => '관리자 권한 해제',
+    'ban_user' => '회원 밴',
+    'unban_user' => '회원 밴 해제',
+    'update_post_policy' => '글 공개/공지 변경',
+    'delete_post' => '글 강제 삭제',
+    'delete_comment' => '댓글 삭제',
+    'update_report_status' => '신고 상태 변경',
+];
+$logTargetLabels = ['user' => '회원', 'post' => '글', 'comment' => '댓글', 'report' => '신고'];
+$logFilter = $_GET['log_filter'] ?? 'all';
+if (!in_array($logFilter, ['all', 'user', 'post', 'comment', 'report'], true)) {
+    $logFilter = 'all';
+}
+$logWhere = '';
+$logTypes = '';
+$logParams = [];
+if ($logFilter !== 'all') {
+    $logWhere = "WHERE ml.target_type = ?";
+    $logTypes = "s";
+    $logParams[] = $logFilter;
+}
 $recentLogs = $hasModerationLogs ? adminFetchAll(
     $conn,
     "SELECT ml.target_type, ml.target_id, ml.action, ml.reason, ml.created_at, u.nickname AS admin_nickname
      FROM moderation_logs ml
      JOIN users u ON u.id = ml.admin_id
+     $logWhere
      ORDER BY ml.created_at DESC, ml.id DESC
-     LIMIT 8"
+     LIMIT 12",
+    $logTypes,
+    $logParams
+) : [];
+
+$recentReports = $hasReports ? adminFetchAll(
+    $conn,
+    "SELECT r.id, r.target_type, r.target_id, r.reason, r.status, r.admin_note, r.created_at,
+            u.nickname AS reporter_nickname
+     FROM reports r
+     JOIN users u ON u.id = r.reporter_id
+     ORDER BY FIELD(r.status, 'pending', 'reviewed', 'resolved'), r.created_at DESC, r.id DESC
+     LIMIT 10"
 ) : [];
 
 $recentGuestbook = adminFetchAll(
@@ -413,6 +480,8 @@ $topBlogs = adminFetchAll(
 
 $visibilityLabels = ['all' => '전체공개', 'neighbor' => '이웃공개', 'private' => '비공개'];
 $statusLabels = ['published' => '발행', 'draft' => '임시저장'];
+$reportStatusLabels = ['pending' => '대기', 'reviewed' => '확인', 'resolved' => '조치 완료'];
+$reportTargetLabels = ['post' => '글', 'comment' => '댓글', 'guestbook' => '방명록', 'message' => '쪽지'];
 
 $pageTitle = '관리자 대시보드 · BRIDGE 206';
 $pageClass = 'page--wide';
@@ -436,6 +505,15 @@ require_once __DIR__ . '/../app/header.php';
     <div class="form-ok"><?= htmlspecialchars($adminMessage) ?></div>
   <?php endif; ?>
 
+  <div class="admin-period">
+    <strong>요약 기준: <?= htmlspecialchars($periodLabel) ?></strong>
+    <nav>
+      <a class="<?= $summaryPeriod === '7' ? 'is-active' : '' ?>" href="admin.php?period=7">최근 7일</a>
+      <a class="<?= $summaryPeriod === '30' ? 'is-active' : '' ?>" href="admin.php?period=30">최근 30일</a>
+      <a class="<?= $summaryPeriod === 'all' ? 'is-active' : '' ?>" href="admin.php?period=all">전체 기간</a>
+    </nav>
+  </div>
+
   <div class="admin-stats">
     <div><span><?= number_format($summary['users']) ?></span><strong>회원</strong></div>
     <div><span data-admin-banned-count><?= number_format($summary['banned_users']) ?></span><strong>밴 회원</strong></div>
@@ -445,6 +523,7 @@ require_once __DIR__ . '/../app/header.php';
     <div><span data-admin-draft-count><?= number_format($summary['drafts']) ?></span><strong>임시저장</strong></div>
     <div><span><?= number_format($summary['comments']) ?></span><strong>댓글</strong></div>
     <div><span><?= number_format($summary['guestbook']) ?></span><strong>방명록</strong></div>
+    <div><span><?= number_format($summary['pending_reports']) ?></span><strong>대기 신고</strong></div>
     <div><span><?= number_format($summary['likes']) ?></span><strong>공감</strong></div>
     <div><span><?= number_format($summary['scraps']) ?></span><strong>스크랩</strong></div>
     <div><span><?= number_format($summary['neighbors']) ?></span><strong>이웃 연결</strong></div>
@@ -623,7 +702,7 @@ require_once __DIR__ . '/../app/header.php';
     <section class="admin-panel">
       <div class="admin-panel__head">
         <h2>최근 댓글</h2>
-        <span><?= count($recentComments) ?>개</span>
+        <a href="comments_manage.php?scope=all"><?= count($recentComments) ?>개 · 전체 관리</a>
       </div>
       <div class="admin-list">
         <?php foreach ($recentComments as $c): ?>
@@ -643,6 +722,69 @@ require_once __DIR__ . '/../app/header.php';
         <?php endforeach; ?>
         <?php if (!$recentComments): ?><p class="admin-empty">댓글이 없습니다.</p><?php endif; ?>
       </div>
+    </section>
+
+    <section class="admin-panel admin-panel--wide">
+      <div class="admin-panel__head">
+        <h2>신고 관리</h2>
+        <span><?= $hasReports ? count($recentReports) . '개' : 'migration 필요' ?></span>
+      </div>
+      <?php if (!$hasReports): ?>
+        <p class="admin-empty">신고 기능을 사용하려면 database/add_professor_features.sql 을 먼저 실행해주세요.</p>
+      <?php elseif (!$recentReports): ?>
+        <p class="admin-empty">접수된 신고가 없습니다.</p>
+      <?php else: ?>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>신고번호</th>
+                <th>대상</th>
+                <th>신고자</th>
+                <th>사유</th>
+                <th>상태</th>
+                <th>접수일</th>
+                <th>처리</th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php foreach ($recentReports as $report): ?>
+                <tr>
+                  <td><?= (int)$report['id'] ?></td>
+                  <td>
+                    <?php if ($report['target_type'] === 'post'): ?>
+                      <a href="view.php?id=<?= (int)$report['target_id'] ?>">글 #<?= (int)$report['target_id'] ?></a>
+                    <?php elseif ($report['target_type'] === 'guestbook'): ?>
+                      <span>방명록 #<?= (int)$report['target_id'] ?></span>
+                    <?php elseif ($report['target_type'] === 'comment'): ?>
+                      <span>댓글 #<?= (int)$report['target_id'] ?></span>
+                    <?php else: ?>
+                      <span><?= htmlspecialchars($reportTargetLabels[$report['target_type']] ?? $report['target_type']) ?> #<?= (int)$report['target_id'] ?></span>
+                    <?php endif; ?>
+                  </td>
+                  <td><?= htmlspecialchars($report['reporter_nickname']) ?></td>
+                  <td><?= htmlspecialchars($report['reason']) ?></td>
+                  <td><span class="admin-badge"><?= htmlspecialchars($reportStatusLabels[$report['status']] ?? $report['status']) ?></span></td>
+                  <td><?= date('Y.m.d H:i', strtotime($report['created_at'])) ?></td>
+                  <td>
+                    <form class="admin-inline-form admin-inline-form--post" method="post" action="admin.php">
+                      <input type="hidden" name="admin_action" value="report_status">
+                      <input type="hidden" name="report_id" value="<?= (int)$report['id'] ?>">
+                      <select name="status">
+                        <option value="pending" <?= $report['status'] === 'pending' ? 'selected' : '' ?>>대기</option>
+                        <option value="reviewed" <?= $report['status'] === 'reviewed' ? 'selected' : '' ?>>확인</option>
+                        <option value="resolved" <?= $report['status'] === 'resolved' ? 'selected' : '' ?>>조치 완료</option>
+                      </select>
+                      <input type="text" name="admin_note" maxlength="255" placeholder="처리 메모" value="<?= htmlspecialchars($report['admin_note'] ?? '') ?>">
+                      <button type="submit">저장</button>
+                    </form>
+                  </td>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+      <?php endif; ?>
     </section>
 
     <section class="admin-panel">
@@ -667,17 +809,29 @@ require_once __DIR__ . '/../app/header.php';
         <h2>최근 운영 로그</h2>
         <span><?= $hasModerationLogs ? count($recentLogs) . '개' : 'migration 필요' ?></span>
       </div>
+      <?php if ($hasModerationLogs): ?>
+        <div class="admin-filter">
+          <a class="<?= $logFilter === 'all' ? 'is-active' : '' ?>" href="admin.php?log_filter=all">전체</a>
+          <a class="<?= $logFilter === 'user' ? 'is-active' : '' ?>" href="admin.php?log_filter=user">회원</a>
+          <a class="<?= $logFilter === 'post' ? 'is-active' : '' ?>" href="admin.php?log_filter=post">글</a>
+          <a class="<?= $logFilter === 'comment' ? 'is-active' : '' ?>" href="admin.php?log_filter=comment">댓글</a>
+          <a class="<?= $logFilter === 'report' ? 'is-active' : '' ?>" href="admin.php?log_filter=report">신고</a>
+        </div>
+      <?php endif; ?>
       <?php if (!$hasModerationLogs): ?>
         <p class="admin-empty">운영 로그를 보려면 database/add_professor_features.sql 을 실행해주세요.</p>
       <?php elseif (!$recentLogs): ?>
-        <p class="admin-empty">아직 운영 조치 기록이 없습니다.</p>
+        <p class="admin-empty">선택한 조건의 운영 조치 기록이 없습니다.</p>
       <?php else: ?>
         <div class="admin-list admin-list--logs">
           <?php foreach ($recentLogs as $log): ?>
             <div class="admin-log">
-              <strong><?= htmlspecialchars($log['action']) ?> · <?= htmlspecialchars($log['target_type']) ?> #<?= (int)$log['target_id'] ?></strong>
+              <div class="admin-log__top">
+                <strong><?= htmlspecialchars($logActionLabels[$log['action']] ?? $log['action']) ?></strong>
+                <span><?= htmlspecialchars($logTargetLabels[$log['target_type']] ?? $log['target_type']) ?> #<?= (int)$log['target_id'] ?></span>
+              </div>
               <span><?= htmlspecialchars($log['admin_nickname']) ?> · <?= date('Y.m.d H:i', strtotime($log['created_at'])) ?></span>
-              <?php if (!empty($log['reason'])): ?><em><?= htmlspecialchars($log['reason']) ?></em><?php endif; ?>
+              <?php if (!empty($log['reason'])): ?><em>메모: <?= htmlspecialchars($log['reason']) ?></em><?php endif; ?>
             </div>
           <?php endforeach; ?>
         </div>

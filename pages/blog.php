@@ -793,9 +793,14 @@ require_once __DIR__ . '/../app/header.php';
               <span class="card__cat">
                 <?php if (!empty($p['is_pinned'])): ?><b class="card__pin">공지</b><?php endif; ?>
                 <?= $p['category_name'] ? htmlspecialchars($p['category_name']) : '미분류' ?>
-                <?php if ($isOwner && $p['status'] === 'draft'): ?> · 임시저장<?php endif; ?>
-                <?php if ($isOwner && $p['visibility'] !== 'all'): ?> · <?= $p['visibility'] === 'private' ? '비공개' : '이웃공개' ?><?php endif; ?>
               </span>
+              <?php if ($isOwner || $p['visibility'] !== 'all'): ?>
+                <span class="visibility-badges">
+                  <?php if ($p['status'] === 'draft'): ?><b class="visibility-badge visibility-badge--draft">임시저장</b><?php endif; ?>
+                  <?php if ($p['visibility'] === 'private'): ?><b class="visibility-badge visibility-badge--private">비공개</b><?php endif; ?>
+                  <?php if ($p['visibility'] === 'neighbor'): ?><b class="visibility-badge visibility-badge--neighbor">이웃공개</b><?php endif; ?>
+                </span>
+              <?php endif; ?>
               <h2 class="card__title"><?= htmlspecialchars($p['title']) ?></h2>
               <?php if ((int)$blogSettings['show_post_summary'] === 1): ?>
                 <p class="card__excerpt"><?= htmlspecialchars(mb_strimwidth(strip_tags($p['content']), 0, 70, '…')) ?></p>

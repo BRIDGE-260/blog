@@ -11,6 +11,28 @@ require_once __DIR__ . '/../app/db.php';
 $isLogin  = isset($_SESSION['user_id']);
 $viewerId = $_SESSION['user_id'] ?? 0;
 $ownerId  = (int)($_GET['id'] ?? $viewerId);
+$hasReports = false;
+$reportNotice = '';
+$reportTableResult = $conn->query("SHOW TABLES LIKE 'reports'");
+if ($reportTableResult && $reportTableResult->num_rows > 0) {
+    $hasReports = true;
+}
+
+function saveGuestbookReport(mysqli $conn, int $reporterId, int $targetId, string $reason): bool {
+    $reason = mb_substr(trim($reason), 0, 255);
+    if ($reporterId <= 0 || $targetId <= 0 || $reason === '') return false;
+    $targetType = 'guestbook';
+    $stmt = $conn->prepare(
+        "INSERT INTO reports (reporter_id, target_type, target_id, reason, status)
+         VALUES (?, ?, ?, ?, 'pending')
+         ON DUPLICATE KEY UPDATE reason = VALUES(reason), status = 'pending', admin_note = NULL"
+    );
+    $stmt->bind_param("isis", $reporterId, $targetType, $targetId, $reason);
+    $stmt->execute();
+    $ok = $stmt->affected_rows > 0;
+    $stmt->close();
+    return $ok;
+}
 
 // 방명록 주인 정보
 $stmt = $conn->prepare("SELECT id, nickname, blog_title FROM users WHERE id = ?");
@@ -48,10 +70,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isLogin) {
         $stmt->bind_param("iii", $gid, $viewerId, $viewerId);
         $stmt->execute();
         $stmt->close();
+    } elseif ($action === 'report' && $hasReports) {
+        $gid = (int)($_POST['gid'] ?? 0);
+        $stmt = $conn->prepare("SELECT user_id FROM guestbook WHERE id = ? AND owner_id = ?");
+        $stmt->bind_param("ii", $gid, $ownerId);
+        $stmt->execute();
+        $target = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        if ($target && (int)$target['user_id'] !== $viewerId) {
+            saveGuestbookReport($conn, $viewerId, $gid, $_POST['reason'] ?? '');
+            header('Location: guestbook.php?id=' . $ownerId . '&reported=1');
+            exit;
+        }
     }
 
     header('Location: guestbook.php?id=' . $ownerId);
     exit;
+}
+
+if (($_GET['reported'] ?? '') === '1') {
+    $reportNotice = '신고가 접수됐어요. 관리자가 확인할게요.';
 }
 
 // 목록
@@ -81,6 +119,10 @@ require_once __DIR__ . '/../app/header.php';
     <a class="gb__back" href="blog.php?id=<?= (int)$ownerId ?>">← <?= htmlspecialchars($ownerName) ?></a>
   </div>
 
+  <?php if ($reportNotice !== ''): ?>
+    <div class="form-ok"><?= htmlspecialchars($reportNotice) ?></div>
+  <?php endif; ?>
+
   <?php if ($isLogin && !$isOwner): ?>
     <form class="comment-form" method="post" action="guestbook.php?id=<?= (int)$ownerId ?>">
       <input type="hidden" name="action" value="write">
@@ -105,13 +147,23 @@ require_once __DIR__ . '/../app/header.php';
           <span class="comment__date"><?= date('Y.m.d H:i', strtotime($g['created_at'])) ?></span>
         </div>
         <p class="comment__body"><?= nl2br(htmlspecialchars($g['content'])) ?></p>
-        <?php if ($g['user_id'] == $viewerId || $isOwner): ?>
+        <?php if ($g['user_id'] == $viewerId || $isOwner || ($isLogin && $hasReports)): ?>
           <div class="comment__actions">
-            <form method="post" action="guestbook.php?id=<?= (int)$ownerId ?>" class="comment__del" data-confirm="방명록을 삭제할까요?">
-              <input type="hidden" name="action" value="delete">
-              <input type="hidden" name="gid" value="<?= (int)$g['id'] ?>">
-              <button type="submit">삭제</button>
-            </form>
+            <?php if ($g['user_id'] == $viewerId || $isOwner): ?>
+              <form method="post" action="guestbook.php?id=<?= (int)$ownerId ?>" class="comment__del" data-confirm="방명록을 삭제할까요?">
+                <input type="hidden" name="action" value="delete">
+                <input type="hidden" name="gid" value="<?= (int)$g['id'] ?>">
+                <button type="submit">삭제</button>
+              </form>
+            <?php endif; ?>
+            <?php if ($isLogin && $hasReports && (int)$g['user_id'] !== $viewerId): ?>
+              <form method="post" action="guestbook.php?id=<?= (int)$ownerId ?>" class="report-form" data-confirm="이 방명록을 신고할까요?">
+                <input type="hidden" name="action" value="report">
+                <input type="hidden" name="gid" value="<?= (int)$g['id'] ?>">
+                <input type="text" name="reason" maxlength="255" placeholder="신고 사유" required>
+                <button type="submit">신고</button>
+              </form>
+            <?php endif; ?>
           </div>
         <?php endif; ?>
       </div>

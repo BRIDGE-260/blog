@@ -237,20 +237,23 @@ require_once __DIR__ . '/../app/header.php';
   <?php endif; ?>
 
   <div class="customize-presets" aria-label="빠른 테마">
-    <button type="button" data-preset='{"accent_color":"#294894","background_color":"#f5f6f8","profile_card_color":"#ffffff","layout_type":"standard","post_list_style":"card","thumbnail_style":"wide","font_style":"sans"}'>
-      <span style="background:#294894"></span> 로고 블루
+    <button type="button" data-preset='{"accent_color":"#294894","background_color":"#f5f6f8","profile_card_color":"#ffffff","layout_type":"standard","post_list_style":"card","thumbnail_style":"wide","font_style":"sans","blog_mood":"daily"}'>
+      <span style="background:#294894"></span> 심플
     </button>
-    <button type="button" data-preset='{"accent_color":"#8b5e34","background_color":"#f3eee7","profile_card_color":"#fffaf2","layout_type":"compact","post_list_style":"card","thumbnail_style":"square","font_style":"serif"}'>
-      <span style="background:#8b5e34"></span> 감성
+    <button type="button" data-preset='{"accent_color":"#b87486","background_color":"#f8f1f3","profile_card_color":"#fffafa","layout_type":"compact","post_list_style":"card","thumbnail_style":"square","font_style":"rounded","blog_mood":"letter"}'>
+      <span style="background:#b87486"></span> 감성
     </button>
-    <button type="button" data-preset='{"accent_color":"#4f8fbd","background_color":"#edf4fb","profile_card_color":"#ffffff","layout_type":"wide","post_list_style":"list","thumbnail_style":"wide","font_style":"sans"}'>
-      <span style="background:#4f8fbd"></span> 깔끔
+    <button type="button" data-preset='{"accent_color":"#7a5c3a","background_color":"#f3eee7","profile_card_color":"#fffaf2","layout_type":"standard","post_list_style":"list","thumbnail_style":"wide","font_style":"serif","blog_mood":"daily"}'>
+      <span style="background:#7a5c3a"></span> 클래식
     </button>
-    <button type="button" data-preset='{"accent_color":"#7aa87a","background_color":"#eef5ed","profile_card_color":"#ffffff","layout_type":"standard","post_list_style":"card","thumbnail_style":"wide","font_style":"rounded"}'>
-      <span style="background:#7aa87a"></span> 산뜻
+    <button type="button" data-preset='{"accent_color":"#4f8fbd","background_color":"#edf4fb","profile_card_color":"#ffffff","layout_type":"wide","post_list_style":"list","thumbnail_style":"wide","font_style":"sans","blog_mood":"studio"}'>
+      <span style="background:#4f8fbd"></span> 스튜디오
     </button>
-    <button type="button" data-preset='{"accent_color":"#b87486","background_color":"#f8f1f3","profile_card_color":"#fffafa","layout_type":"compact","post_list_style":"card","thumbnail_style":"square","font_style":"rounded"}'>
-      <span style="background:#b87486"></span> 부드러운
+    <button type="button" data-preset='{"accent_color":"#6f9f6f","background_color":"#eef5ed","profile_card_color":"#ffffff","layout_type":"standard","post_list_style":"card","thumbnail_style":"wide","font_style":"rounded","blog_mood":"garden"}'>
+      <span style="background:#6f9f6f"></span> 정원
+    </button>
+    <button type="button" data-preset='{"accent_color":"#8b5e34","background_color":"#fff8ed","profile_card_color":"#fffdf8","layout_type":"compact","post_list_style":"card","thumbnail_style":"hidden","font_style":"serif","blog_mood":"letter"}'>
+      <span style="background:#8b5e34"></span> 편지
     </button>
   </div>
 

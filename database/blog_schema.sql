@@ -206,6 +206,31 @@ CREATE TABLE `moderation_logs` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `reports`
+--
+
+DROP TABLE IF EXISTS `reports`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `reports` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `reporter_id` int(11) NOT NULL,
+  `target_type` varchar(20) NOT NULL COMMENT 'post/comment/guestbook/message',
+  `target_id` int(11) NOT NULL,
+  `reason` varchar(255) NOT NULL,
+  `status` varchar(20) NOT NULL DEFAULT 'pending' COMMENT 'pending/reviewed/resolved',
+  `admin_note` varchar(255) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `updated_at` datetime DEFAULT NULL ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_reports_reporter_target` (`reporter_id`,`target_type`,`target_id`),
+  KEY `idx_reports_status_created` (`status`,`created_at`),
+  KEY `idx_reports_target` (`target_type`,`target_id`),
+  CONSTRAINT `fk_reports_reporter` FOREIGN KEY (`reporter_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `notification_reads`
 --
 

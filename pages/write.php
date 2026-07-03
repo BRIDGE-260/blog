@@ -140,14 +140,24 @@ $bridgeQuestions = [
 ?>
 
 <section class="write">
-  <h1>글쓰기</h1>
+  <div class="write-top">
+    <button type="button" class="write-menu-btn" aria-label="글쓰기 메뉴">☰</button>
+    <div class="write-top__meta">
+      <strong>글쓰기</strong>
+      <span>BRIDGE 206</span>
+    </div>
+    <div class="write-top__actions" aria-label="저장 버튼">
+      <button type="submit" form="writeForm" name="status" value="draft">저장</button>
+      <button type="submit" form="writeForm" name="status" value="published">발행</button>
+    </div>
+  </div>
 
   <?php if ($error): ?>
     <div class="form-error"><?= htmlspecialchars($error) ?></div>
   <?php endif; ?>
 
-  <form class="write-form" method="post" action="write.php" enctype="multipart/form-data">
-    <input class="wf-title" type="text" name="title" placeholder="제목"
+  <form id="writeForm" class="write-form write-form--editorial" method="post" action="write.php" enctype="multipart/form-data" data-autosave-form data-autosave-key="bridge206WriteDraft">
+    <input class="wf-title" type="text" name="title" placeholder="제목을 입력하세요"
            value="<?= htmlspecialchars($title) ?>" required>
 
     <section class="bridge-write" aria-label="BRIDGE 206 글감 질문">
@@ -169,7 +179,14 @@ $bridgeQuestions = [
       </div>
     </section>
 
-    <div class="wf-row">
+    <aside class="write-side-tools" aria-label="글쓰기 도구">
+      <button type="button" data-tool-target="images" title="사진/동영상 첨부">▧</button>
+      <button type="button" data-tool-target="prompts" title="글감 질문">?</button>
+      <button type="button" data-tool-target="settings" title="글 설정">⚙</button>
+      <button type="button" data-tool-target="tags" title="태그">#</button>
+    </aside>
+
+    <div class="wf-row write-settings" data-write-block="settings">
       <label>
         <span>카테고리</span>
         <select name="category">
@@ -198,10 +215,13 @@ $bridgeQuestions = [
     </label>
 
     <div class="wf-content wf-editor" id="editor" contenteditable="true"
-         data-placeholder="내용을 입력하세요. 아래에서 첨부파일을 고른 뒤 미리보기를 본문으로 드래그하면 그 자리에 들어갑니다."><?= htmlspecialchars(preg_replace('/\[\[(?:img|video):[^\]]+\]\]/', '', $content)) ?></div>
+         data-placeholder="오늘 나누고 싶은 이야기를 적어보세요."><?= htmlspecialchars(preg_replace('/\[\[(?:img|video):[^\]]+\]\]/', '', $content)) ?></div>
     <input type="hidden" name="content" id="contentField">
+    <div class="write-editor-status">
+      <span class="write-count" data-write-count>0자 · 0단어</span>
+    </div>
 
-    <div class="wf-field">
+    <div class="wf-field" data-write-block="tags">
       <span>태그 (입력 후 Enter)</span>
       <div class="taginput">
         <input type="text" class="taginput__field" placeholder="예: JPOP 시티팝">
@@ -209,17 +229,14 @@ $bridgeQuestions = [
       </div>
     </div>
 
-    <label class="wf-field">
+    <label class="wf-field" data-write-block="images">
       <span>본문 첨부 (사진/동영상 선택 → 아래 미리보기를 본문으로 드래그하면 그 자리에 들어갑니다 · 안 넣은 파일은 저장 안 됨)</span>
       <small class="wf-hint">여러 장을 한 번에 고르려면 파일 선택 창에서 Ctrl 또는 Shift를 누른 채 선택하세요.</small>
       <input type="file" name="images[]" accept="image/*,video/*" multiple>
     </label>
     <div id="imgTray" class="imgtray"></div>
 
-    <div class="wf-actions">
-      <button type="submit" name="status" value="draft"     class="btn-ghost-dark">임시저장</button>
-      <button type="submit" name="status" value="published" class="btn-primary">발행</button>
-    </div>
+    <p class="write-helper" aria-live="polite">상단의 저장 또는 발행 버튼으로 글을 마무리할 수 있어요.</p>
   </form>
 </section>
 
@@ -253,6 +270,115 @@ $bridgeQuestions = [
     card.addEventListener('click', function () {
       appendQuestion(card.getAttribute('data-bridge-question'), card.getAttribute('data-bridge-guide'));
     });
+  });
+})();
+</script>
+<script>
+(function () {
+  var form = document.querySelector('[data-autosave-form]');
+  var editor = document.getElementById('editor');
+  if (!form || !editor || !window.localStorage) return;
+
+  var key = form.getAttribute('data-autosave-key') || 'bridge206WriteDraft';
+  var title = form.querySelector('input[name="title"]');
+  var category = form.querySelector('select[name="category"]');
+  var visibility = form.querySelector('select[name="visibility"]');
+  var tags = form.querySelector('input[name="tags"]');
+  var pinned = form.querySelector('input[name="is_pinned"]');
+  var status = form.querySelector('.write-editor-status');
+  var countLabel = form.querySelector('[data-write-count]');
+  var notice = document.createElement('p');
+  notice.className = 'autosave-note';
+  notice.setAttribute('role', 'status');
+  notice.setAttribute('aria-live', 'polite');
+  if (status) status.appendChild(notice);
+
+  function updateCount() {
+    if (!countLabel) return;
+    var text = editor.innerText.replace(/\s+/g, ' ').trim();
+    var chars = text.replace(/\s/g, '').length;
+    var words = text ? text.split(' ').length : 0;
+    countLabel.textContent = chars + '자 · ' + words + '단어';
+  }
+
+  function hasServerValue() {
+    return Boolean((title && title.value.trim()) || editor.innerText.trim() || editor.querySelector('.editor-img'));
+  }
+
+  function readDraft() {
+    try {
+      return JSON.parse(localStorage.getItem(key) || 'null');
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function writeDraft() {
+    var draft = {
+      title: title ? title.value : '',
+      category: category ? category.value : '',
+      visibility: visibility ? visibility.value : 'all',
+      tags: tags ? tags.value : '',
+      pinned: pinned ? pinned.checked : false,
+      editorHtml: editor.innerHTML,
+      savedAt: new Date().toISOString()
+    };
+    localStorage.setItem(key, JSON.stringify(draft));
+    var time = new Date(draft.savedAt);
+    notice.textContent = '자동 임시저장됨 ' + String(time.getHours()).padStart(2, '0') + ':' + String(time.getMinutes()).padStart(2, '0');
+  }
+
+  function restoreDraft() {
+    if (hasServerValue()) return;
+    var draft = readDraft();
+    if (!draft) return;
+    if (title) title.value = draft.title || '';
+    if (category) category.value = draft.category || '';
+    if (visibility) visibility.value = draft.visibility || 'all';
+    if (tags) {
+      tags.value = draft.tags || '';
+      tags.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    if (pinned) pinned.checked = Boolean(draft.pinned);
+    if (draft.editorHtml) editor.innerHTML = draft.editorHtml;
+    notice.textContent = '자동 임시저장 글을 불러왔어요.';
+  }
+
+  var timer = null;
+  function scheduleSave() {
+    clearTimeout(timer);
+    updateCount();
+    timer = setTimeout(writeDraft, 500);
+  }
+
+  restoreDraft();
+  updateCount();
+  form.addEventListener('input', scheduleSave);
+  form.addEventListener('change', scheduleSave);
+  editor.addEventListener('keyup', scheduleSave);
+  editor.addEventListener('mouseup', scheduleSave);
+  form.addEventListener('submit', function () {
+    if (title && title.value.trim() !== '' && editor.innerText.trim() !== '') {
+      localStorage.removeItem(key);
+    }
+  });
+
+  document.addEventListener('click', function (event) {
+    var tool = event.target.closest('[data-tool-target]');
+    if (!tool) return;
+    var target = tool.getAttribute('data-tool-target');
+    if (target === 'images') {
+      var file = document.querySelector('input[type="file"][name="images[]"]');
+      if (file) file.click();
+      return;
+    }
+    if (target === 'prompts') {
+      var promptBlock = document.querySelector('.bridge-write');
+      if (promptBlock) promptBlock.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    var block = document.querySelector('[data-write-block="' + target + '"]');
+    if (block) block.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
 })();
 </script>

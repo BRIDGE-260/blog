@@ -45,6 +45,29 @@ $canView = $post && (
     || ($post['status'] === 'published' && $post['visibility'] === 'all')
     || ($post['status'] === 'published' && $post['visibility'] === 'neighbor' && $isNeighbor)
 );
+$hasReports = false;
+$reportNotice = '';
+$reportTableResult = $conn->query("SHOW TABLES LIKE 'reports'");
+if ($reportTableResult && $reportTableResult->num_rows > 0) {
+    $hasReports = true;
+}
+
+function saveReport(mysqli $conn, int $reporterId, string $targetType, int $targetId, string $reason): bool {
+    $reason = mb_substr(trim($reason), 0, 255);
+    if ($reporterId <= 0 || $targetId <= 0 || $reason === '') return false;
+    if (!in_array($targetType, ['post', 'comment', 'guestbook', 'message'], true)) return false;
+
+    $stmt = $conn->prepare(
+        "INSERT INTO reports (reporter_id, target_type, target_id, reason, status)
+         VALUES (?, ?, ?, ?, 'pending')
+         ON DUPLICATE KEY UPDATE reason = VALUES(reason), status = 'pending', admin_note = NULL"
+    );
+    $stmt->bind_param("isis", $reporterId, $targetType, $targetId, $reason);
+    $stmt->execute();
+    $ok = $stmt->affected_rows > 0;
+    $stmt->close();
+    return $ok;
+}
 
 // ============================================================
 // POST 처리 (공감/댓글) — 볼 수 있는 글에만, 처리 후 리다이렉트
@@ -142,9 +165,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canView && $isLogin) {
         $stmt->execute();
         $stmt->close();
     }
+    elseif ($action === 'report_post' && $hasReports && !$isOwner) {
+        saveReport($conn, $viewerId, 'post', $postId, $_POST['reason'] ?? '');
+        header('Location: view.php?id=' . $postId . '&reported=1');
+        exit;
+    }
+    elseif ($action === 'report_comment' && $hasReports) {
+        $commentId = (int)($_POST['comment_id'] ?? 0);
+        $stmt = $conn->prepare("SELECT user_id FROM comments WHERE id = ? AND post_id = ?");
+        $stmt->bind_param("ii", $commentId, $postId);
+        $stmt->execute();
+        $commentTarget = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        if ($commentTarget && (int)$commentTarget['user_id'] !== $viewerId) {
+            saveReport($conn, $viewerId, 'comment', $commentId, $_POST['reason'] ?? '');
+            header('Location: view.php?id=' . $postId . '&reported=1');
+            exit;
+        }
+    }
 
     header('Location: view.php?id=' . $postId);
     exit;
+}
+
+if (($_GET['reported'] ?? '') === '1') {
+    $reportNotice = '신고가 접수됐어요. 관리자가 확인할게요.';
 }
 
 // 볼 수 있는 글이면 조회수 +1 (단, 본인 글 제외 + 같은 세션에선 1회만 — 새로고침 중복 방지)
@@ -327,6 +372,9 @@ require_once __DIR__ . '/../app/header.php';
 <?php elseif (!$canView): ?>
   <p class="empty">비공개 글이거나 볼 수 있는 권한이 없어요.</p>
 <?php else: ?>
+  <?php if ($reportNotice !== ''): ?>
+    <div class="form-ok"><?= htmlspecialchars($reportNotice) ?></div>
+  <?php endif; ?>
 
   <?php if (($_GET['from'] ?? '') === 'notifications'): ?>
     <a class="back-link" href="notifications.php">← 소식으로 돌아가기</a>
@@ -342,6 +390,14 @@ require_once __DIR__ . '/../app/header.php';
       <a href="blog.php?id=<?= (int)$post['user_id'] ?>"><?= htmlspecialchars($post['nickname']) ?>님</a>
       <span><?= date('Y.m.d H:i', strtotime($post['created_at'])) ?> · 조회 <?= (int)$post['view_count'] ?></span>
     </div>
+
+    <?php if ($isOwner || $post['visibility'] !== 'all'): ?>
+      <div class="visibility-badges visibility-badges--post">
+        <?php if ($post['status'] === 'draft'): ?><b class="visibility-badge visibility-badge--draft">임시저장</b><?php endif; ?>
+        <?php if ($post['visibility'] === 'private'): ?><b class="visibility-badge visibility-badge--private">비공개</b><?php endif; ?>
+        <?php if ($post['visibility'] === 'neighbor'): ?><b class="visibility-badge visibility-badge--neighbor">이웃공개</b><?php endif; ?>
+      </div>
+    <?php endif; ?>
 
     <?php if ($isOwner): ?>
       <div class="post__owner">
@@ -395,6 +451,13 @@ require_once __DIR__ . '/../app/header.php';
         <a class="like-btn" href="auth.php">☆ 스크랩</a>
       <?php endif; ?>
       <button type="button" class="like-btn" id="copyLink">🔗 링크 복사</button>
+      <?php if ($isLogin && $hasReports && !$isOwner): ?>
+        <form method="post" action="view.php?id=<?= (int)$post['id'] ?>" class="report-form report-form--post" data-confirm="이 글을 신고할까요?">
+          <input type="hidden" name="action" value="report_post">
+          <input type="text" name="reason" maxlength="255" placeholder="신고 사유" required>
+          <button type="submit" class="like-btn">신고</button>
+        </form>
+      <?php endif; ?>
     </div>
   </article>
 
@@ -415,7 +478,7 @@ require_once __DIR__ . '/../app/header.php';
   <!-- 댓글 -->
   <?php
   /** 댓글/답글 한 개 출력. $allowReply=true 면 답글 폼 노출(최상위 댓글에만). */
-  function renderComment($cm, $postId, $viewerId, $isLogin, $isPostOwner, $isReply = false) {
+  function renderComment($cm, $postId, $viewerId, $isLogin, $isPostOwner, $canReport, $isReply = false) {
       $mine = $cm['user_id'] == $viewerId;
       $canDelete = $mine || $isPostOwner;
       $canReply = !$isReply && $isLogin;
@@ -456,6 +519,14 @@ require_once __DIR__ . '/../app/header.php';
                 <button type="submit">삭제</button>
               </form>
             <?php endif; ?>
+            <?php if ($canReport && !$mine): ?>
+              <form method="post" action="view.php?id=<?= (int)$postId ?>" class="report-form" data-confirm="이 댓글을 신고할까요?">
+                <input type="hidden" name="action" value="report_comment">
+                <input type="hidden" name="comment_id" value="<?= (int)$cm['id'] ?>">
+                <input type="text" name="reason" maxlength="255" placeholder="신고 사유" required>
+                <button type="submit">신고</button>
+              </form>
+            <?php endif; ?>
           </div>
         <?php endif; ?>
         <?php if ($canReply): ?>
@@ -480,11 +551,11 @@ require_once __DIR__ . '/../app/header.php';
     <p class="ajax-status" data-ajax-status role="status" aria-live="polite"></p>
 
     <?php foreach ($parents as $cm): ?>
-      <?php renderComment($cm, $post['id'], $viewerId, $isLogin, $isOwner, false); ?>
+      <?php renderComment($cm, $post['id'], $viewerId, $isLogin, $isOwner, $hasReports, false); ?>
       <?php if (!empty($children[$cm['id']])): ?>
         <div class="comment-replies" data-replies-for="<?= (int)$cm['id'] ?>">
           <?php foreach ($children[$cm['id']] as $rep): ?>
-            <?php renderComment($rep, $post['id'], $viewerId, $isLogin, $isOwner, true); ?>
+            <?php renderComment($rep, $post['id'], $viewerId, $isLogin, $isOwner, $hasReports, true); ?>
           <?php endforeach; ?>
         </div>
       <?php endif; ?>

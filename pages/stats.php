@@ -68,6 +68,8 @@ $guestbookCount = statOne($conn, "SELECT COUNT(*) AS cnt FROM guestbook WHERE ow
 $hourRows = [];
 $genderRows = [];
 $recentVisitEvents = [];
+$recentVisitors = [];
+$frequentNeighbors = [];
 if ($hasVisitEvents) {
     $stmt = $conn->prepare(
         "SELECT visit_hour, COUNT(*) AS cnt
@@ -104,6 +106,35 @@ if ($hasVisitEvents) {
     $stmt->bind_param("i", $userId);
     $stmt->execute();
     $recentVisitEvents = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    $stmt = $conn->prepare(
+        "SELECT u.id, u.nickname, MAX(ve.created_at) AS last_visit_at, COUNT(*) AS visit_count
+         FROM visit_events ve
+         JOIN users u ON u.id = ve.viewer_id
+         WHERE ve.owner_id = ? AND ve.viewer_id IS NOT NULL AND ve.viewer_id <> ?
+         GROUP BY u.id, u.nickname
+         ORDER BY last_visit_at DESC
+         LIMIT 5"
+    );
+    $stmt->bind_param("ii", $userId, $userId);
+    $stmt->execute();
+    $recentVisitors = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    $stmt = $conn->prepare(
+        "SELECT u.id, u.nickname, COUNT(*) AS visit_count, MAX(ve.created_at) AS last_visit_at
+         FROM visit_events ve
+         JOIN users u ON u.id = ve.viewer_id
+         JOIN neighbors n ON n.user_id = ? AND n.neighbor_id = u.id
+         WHERE ve.owner_id = ? AND ve.viewer_id IS NOT NULL
+         GROUP BY u.id, u.nickname
+         ORDER BY visit_count DESC, last_visit_at DESC
+         LIMIT 5"
+    );
+    $stmt->bind_param("ii", $userId, $userId);
+    $stmt->execute();
+    $frequentNeighbors = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
 }
 
@@ -157,8 +188,11 @@ $stmt->close();
 
 if (($_GET['export'] ?? '') === 'stats') {
     header('Content-Type: text/csv; charset=UTF-8');
-    header('Content-Disposition: attachment; filename="bridge206_stats_' . date('Ymd') . '.csv"');
+    $csvFilename = 'bridge206_stats_' . date('Ymd') . '.csv';
+    header('Content-Disposition: attachment; filename="' . $csvFilename . '"; filename*=UTF-8\'\'' . rawurlencode($csvFilename));
+    header('Content-Transfer-Encoding: binary');
     echo "\xEF\xBB\xBF";
+    echo "sep=,\r\n";
     $out = fopen('php://output', 'w');
     fputcsv($out, ['구분', '항목', '값']);
     fputcsv($out, ['요약', '오늘 방문', $todayCount]);
@@ -238,6 +272,7 @@ require_once __DIR__ . '/../app/header.php';
     <nav>
       <a href="blog.php?id=<?= $userId ?>">내 블로그</a>
       <a href="activity.php">내 활동</a>
+      <a href="comments_manage.php">댓글 관리</a>
       <a href="write.php">글쓰기</a>
       <a href="stats.php?export=stats">엑셀 다운로드</a>
     </nav>
@@ -334,7 +369,7 @@ require_once __DIR__ . '/../app/header.php';
         <span>조회순</span>
       </div>
       <?php if ($topPosts): ?>
-        <div class="dashboard-list">
+        <div class="top-posts-visual">
           <?php foreach ($topPosts as $i => $p): ?>
             <a href="view.php?id=<?= (int)$p['id'] ?>">
               <b><?= $i + 1 ?></b>
@@ -342,6 +377,7 @@ require_once __DIR__ . '/../app/header.php';
                 <strong><?= htmlspecialchars($p['title']) ?></strong>
                 <em>조회 <?= number_format($p['view_count']) ?> · 공감 <?= number_format($p['like_count']) ?> · 댓글 <?= number_format($p['comment_count']) ?> · 스크랩 <?= number_format($p['scrap_count']) ?></em>
               </span>
+              <i style="width: <?= round(((int)$p['view_count']) / max(1, (int)$topPosts[0]['view_count']) * 100) ?>%"></i>
             </a>
           <?php endforeach; ?>
         </div>
@@ -369,6 +405,48 @@ require_once __DIR__ . '/../app/header.php';
         </div>
       <?php else: ?>
         <p class="dashboard-empty">아직 받은 반응이 없어요.</p>
+      <?php endif; ?>
+    </section>
+
+    <section class="dashboard-panel">
+      <div class="dashboard-panel__head">
+        <h2>최근 방문자</h2>
+        <span>회원 방문</span>
+      </div>
+      <?php if ($recentVisitors): ?>
+        <div class="dashboard-feed">
+          <?php foreach ($recentVisitors as $visitor): ?>
+            <a href="blog.php?id=<?= (int)$visitor['id'] ?>">
+              <strong><?= htmlspecialchars($visitor['nickname']) ?>님</strong>
+              <span>최근 <?= date('Y.m.d H:i', strtotime($visitor['last_visit_at'])) ?></span>
+              <em>방문 <?= number_format((int)$visitor['visit_count']) ?>회</em>
+            </a>
+          <?php endforeach; ?>
+        </div>
+      <?php else: ?>
+        <p class="dashboard-empty">최근 회원 방문 기록이 아직 없어요.</p>
+      <?php endif; ?>
+    </section>
+
+    <section class="dashboard-panel">
+      <div class="dashboard-panel__head">
+        <h2>자주 오는 이웃</h2>
+        <span>내 이웃 기준</span>
+      </div>
+      <?php if ($frequentNeighbors): ?>
+        <div class="dashboard-list">
+          <?php foreach ($frequentNeighbors as $i => $neighbor): ?>
+            <a href="blog.php?id=<?= (int)$neighbor['id'] ?>">
+              <b><?= $i + 1 ?></b>
+              <span>
+                <strong><?= htmlspecialchars($neighbor['nickname']) ?>님</strong>
+                <em>방문 <?= number_format((int)$neighbor['visit_count']) ?>회 · 최근 <?= date('m.d H:i', strtotime($neighbor['last_visit_at'])) ?></em>
+              </span>
+            </a>
+          <?php endforeach; ?>
+        </div>
+      <?php else: ?>
+        <p class="dashboard-empty">아직 자주 오는 이웃 기록이 없어요.</p>
       <?php endif; ?>
     </section>
 

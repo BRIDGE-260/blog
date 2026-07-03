@@ -189,8 +189,10 @@ function userCard($u, $action, $label, $class, $opts = []) {
       <a class="nbr__main" href="blog.php?id=<?= (int)$u['id'] ?>">
         <div class="nbr__img"><?= $img ?></div>
         <div class="nbr__text">
-          <div class="nbr__title"><?= htmlspecialchars($title) ?>
-            <?php if (!empty($opts['mutual'])): ?><em class="nbr__mutual">서로이웃</em><?php endif; ?>
+          <div class="nbr__title-row">
+            <div class="nbr__title"><?= htmlspecialchars($title) ?>
+              <?php if (!empty($opts['mutual'])): ?><em class="nbr__mutual">서로이웃</em><?php endif; ?>
+            </div>
             <em class="nbr__online <?= $online ? 'is-on' : '' ?>"><?= $online ? '접속 중' : '오프라인' ?></em>
           </div>
           <div class="nbr__nick"><?= $nick ?></div>

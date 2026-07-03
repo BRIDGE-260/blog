@@ -187,6 +187,7 @@ if (isset($_SESSION['user_id'])) {
             <a href="blog.php?id=<?= (int)$_SESSION['user_id'] ?>">내 블로그</a>
             <a href="stats.php">블로그 현황</a>
             <a href="activity.php">내 활동</a>
+            <a href="comments_manage.php">댓글 관리</a>
             <a href="messages.php">쪽지<?= $unreadMessages > 0 ? ' (' . ($unreadMessages > 99 ? '99+' : (int)$unreadMessages) . ')' : '' ?></a>
             <a href="scraps.php">스크랩</a>
             <?php if ($loginIsAdmin): ?>
@@ -226,6 +227,7 @@ if (isset($_SESSION['user_id'])) {
       <a href="blog.php?id=<?= (int)$_SESSION['user_id'] ?>">내 블로그</a>
       <a href="stats.php">현황</a>
       <a href="activity.php">내 활동</a>
+      <a href="comments_manage.php">댓글</a>
       <a href="neighbors.php">이웃</a>
       <a class="topbar__noti" href="messages.php">
         쪽지
