@@ -100,6 +100,27 @@ CREATE TABLE `comments` (
 ) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
+--
+-- Table structure for table `comment_likes`
+--
+
+DROP TABLE IF EXISTS `comment_likes`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `comment_likes` (
+  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT '댓글 좋아요 고유 번호',
+  `comment_id` int(11) NOT NULL COMMENT '좋아요한 댓글',
+  `user_id` int(11) NOT NULL COMMENT '좋아요한 회원',
+  `created_at` datetime NOT NULL DEFAULT current_timestamp() COMMENT '좋아요 일시',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_comment_likes_comment_user` (`comment_id`,`user_id`),
+  KEY `idx_comment_likes_user` (`user_id`),
+  KEY `idx_comment_likes_user_created` (`user_id`,`created_at`,`comment_id`),
+  CONSTRAINT `fk_comment_likes_comment` FOREIGN KEY (`comment_id`) REFERENCES `comments` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_comment_likes_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
 -- Table structure for table `guestbook`
 --
 

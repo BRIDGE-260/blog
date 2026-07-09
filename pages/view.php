@@ -165,6 +165,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canView && $isLogin) {
         $stmt->execute();
         $stmt->close();
     }
+    elseif ($action === 'comment_like') {
+        $commentId = (int)($_POST['comment_id'] ?? 0);
+        $stmt = $conn->prepare("SELECT id FROM comments WHERE id = ? AND post_id = ?");
+        $stmt->bind_param("ii", $commentId, $postId);
+        $stmt->execute();
+        $commentExists = (bool)$stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if ($commentExists) {
+            $stmt = $conn->prepare("SELECT id FROM comment_likes WHERE comment_id = ? AND user_id = ?");
+            $stmt->bind_param("ii", $commentId, $viewerId);
+            $stmt->execute();
+            $liked = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+
+            if ($liked) {
+                $stmt = $conn->prepare("DELETE FROM comment_likes WHERE comment_id = ? AND user_id = ?");
+            } else {
+                $stmt = $conn->prepare("INSERT IGNORE INTO comment_likes (comment_id, user_id) VALUES (?, ?)");
+            }
+            $stmt->bind_param("ii", $commentId, $viewerId);
+            $stmt->execute();
+            $stmt->close();
+        }
+    }
     elseif ($action === 'report_post' && $hasReports && !$isOwner) {
         saveReport($conn, $viewerId, 'post', $postId, $_POST['reason'] ?? '');
         header('Location: view.php?id=' . $postId . '&reported=1');
@@ -250,11 +275,18 @@ if ($canView) {
 
     // 댓글 목록 (부모 댓글 + 답글) → parent_id 로 묶기
     $stmt = $conn->prepare(
-        "SELECT cm.id, cm.parent_id, cm.content, cm.created_at, cm.user_id, u.nickname
-         FROM comments cm JOIN users u ON u.id = cm.user_id
-         WHERE cm.post_id = ? ORDER BY cm.created_at ASC"
+        "SELECT cm.id, cm.parent_id, cm.content, cm.created_at, cm.user_id, u.nickname,
+                COUNT(cl.id) AS like_count,
+                MAX(CASE WHEN my_cl.id IS NULL THEN 0 ELSE 1 END) AS liked_by_me
+         FROM comments cm
+         JOIN users u ON u.id = cm.user_id
+         LEFT JOIN comment_likes cl ON cl.comment_id = cm.id
+         LEFT JOIN comment_likes my_cl ON my_cl.comment_id = cm.id AND my_cl.user_id = ?
+         WHERE cm.post_id = ?
+         GROUP BY cm.id, cm.parent_id, cm.content, cm.created_at, cm.user_id, u.nickname
+         ORDER BY cm.created_at ASC"
     );
-    $stmt->bind_param("i", $postId);
+    $stmt->bind_param("ii", $viewerId, $postId);
     $stmt->execute();
     $comments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
@@ -524,6 +556,14 @@ require_once __DIR__ . '/../app/header.php';
         <?php endif; ?>
         <?php if ($isLogin || $mine): ?>
           <div class="comment__actions">
+            <?php if ($isLogin): ?>
+              <form method="post" action="view.php?id=<?= (int)$postId ?>" class="comment__like" data-ajax-action="comment_like">
+                <input type="hidden" name="action" value="comment_like">
+                <input type="hidden" name="post_id" value="<?= (int)$postId ?>">
+                <input type="hidden" name="comment_id" value="<?= (int)$cm['id'] ?>">
+                <button type="submit" class="comment__like-btn <?= !empty($cm['liked_by_me']) ? 'on' : '' ?>" data-comment-like-btn>♥ 좋아요 <?= (int)($cm['like_count'] ?? 0) ?></button>
+              </form>
+            <?php endif; ?>
             <?php if ($canReply): ?>
               <button type="button" class="comment__reply-btn" data-reply-toggle>답글</button>
             <?php endif; ?>
@@ -743,6 +783,13 @@ require_once __DIR__ . '/../app/header.php';
       if (commentTitle) commentTitle.textContent = '댓글 ' + count;
     }
 
+    function updateCommentLike(form, state) {
+      var btn = form && form.querySelector('[data-comment-like-btn]');
+      if (!btn || !state) return;
+      btn.textContent = '♥ 좋아요 ' + Number(state.count || 0);
+      btn.classList.toggle('on', Boolean(state.liked));
+    }
+
     function closeEditForm(comment) {
       var form = comment && comment.querySelector('[data-edit-form]');
       var body = comment && comment.querySelector('[data-comment-body]');
@@ -871,6 +918,12 @@ require_once __DIR__ . '/../app/header.php';
       }
 
       html += ''
+        + '<form method="post" action="view.php?id=' + postId + '" class="comment__like" data-ajax-action="comment_like">'
+        + '<input type="hidden" name="action" value="comment_like">'
+        + '<input type="hidden" name="post_id" value="' + postId + '">'
+        + '<input type="hidden" name="comment_id" value="' + id + '">'
+        + '<button type="submit" class="comment__like-btn' + (Number(comment.liked_by_me || 0) ? ' on' : '') + '" data-comment-like-btn>♥ 좋아요 ' + Number(comment.like_count || 0) + '</button>'
+        + '</form>'
         + '<button type="button" class="comment__edit-btn" data-edit-toggle>수정</button>'
         + '<form method="post" action="view.php?id=' + postId + '" class="comment__del" data-ajax-action="comment_delete" data-confirm="댓글을 삭제할까요?">'
         + '<input type="hidden" name="action" value="comment_delete">'
@@ -978,6 +1031,8 @@ require_once __DIR__ . '/../app/header.php';
             var replyComment = form.closest('[data-comment-id]');
             if (replyComment) closeReplyForm(replyComment);
             showStatus('댓글이 등록됐어요.', false);
+          } else if (form.dataset.ajaxAction === 'comment_like') {
+            updateCommentLike(form, json.comment_like);
           } else if (form.dataset.ajaxAction === 'comment_edit') {
             var comment = form.closest('[data-comment-id]');
             if (comment) {

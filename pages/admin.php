@@ -132,6 +132,7 @@ $hasSiteSettings = adminTableExists($conn, 'site_settings');
 $hasModerationLogs = adminTableExists($conn, 'moderation_logs');
 $hasBanColumn = adminColumnExists($conn, 'users', 'is_banned');
 $hasReports = adminTableExists($conn, 'reports');
+$hasCommentLikes = adminTableExists($conn, 'comment_likes');
 $isAjaxRequest = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'fetch';
 $summaryPeriod = $_GET['period'] ?? '30';
 if (!in_array($summaryPeriod, ['7', '30', 'all'], true)) {
@@ -330,6 +331,7 @@ $summary = [
     'guestbook' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM guestbook" . adminPeriodWhere('created_at', $periodDays)),
     'pending_reports' => $hasReports ? adminCount($conn, "SELECT COUNT(*) AS cnt FROM reports WHERE status = 'pending'" . adminPeriodAnd('created_at', $periodDays)) : 0,
     'likes' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM likes" . adminPeriodWhere('created_at', $periodDays)),
+    'comment_likes' => $hasCommentLikes ? adminCount($conn, "SELECT COUNT(*) AS cnt FROM comment_likes" . adminPeriodWhere('created_at', $periodDays)) : 0,
     'scraps' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM scraps" . adminPeriodWhere('created_at', $periodDays)),
     'neighbors' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM neighbors" . adminPeriodWhere('created_at', $periodDays)),
     'tags' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM tags"),
@@ -412,12 +414,16 @@ if ($postVisibilityFilter !== 'any') {
     $postTypes .= "s";
     $postParams[] = $postVisibilityFilter;
 }
+$commentLikeSelect = $hasCommentLikes
+    ? "(SELECT COUNT(*) FROM comment_likes cl JOIN comments cc ON cc.id = cl.comment_id WHERE cc.post_id = p.id) AS comment_like_count"
+    : "0 AS comment_like_count";
 $recentPosts = adminFetchAll(
     $conn,
     "SELECT p.id, p.title, p.status, p.visibility, p.is_pinned, p.view_count, p.created_at,
             u.id AS user_id, u.nickname,
             (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count,
-            (SELECT COUNT(*) FROM likes l WHERE l.post_id = p.id) AS like_count
+            (SELECT COUNT(*) FROM likes l WHERE l.post_id = p.id) AS like_count,
+            $commentLikeSelect
      FROM posts p
      JOIN users u ON u.id = p.user_id
      WHERE " . implode(" AND ", $postWhere) . "
@@ -441,9 +447,13 @@ if ($hasSiteSettings) {
     }
 }
 
+$recentCommentLikeSelect = $hasCommentLikes
+    ? "(SELECT COUNT(*) FROM comment_likes cl WHERE cl.comment_id = c.id) AS comment_like_count"
+    : "0 AS comment_like_count";
 $recentComments = adminFetchAll(
     $conn,
     "SELECT c.id, c.content, c.created_at, c.post_id,
+            $recentCommentLikeSelect,
             u.nickname AS writer_nickname, p.title AS post_title
      FROM comments c
      JOIN users u ON u.id = c.user_id
@@ -709,6 +719,7 @@ if (($_GET['export'] ?? '') === 'admin') {
     fputcsv($out, ['요약', '방명록', $summary['guestbook']]);
     fputcsv($out, ['요약', '대기 신고', $summary['pending_reports']]);
     fputcsv($out, ['요약', '공감', $summary['likes']]);
+    fputcsv($out, ['요약', '댓글 좋아요', $summary['comment_likes']]);
     fputcsv($out, ['요약', '스크랩', $summary['scraps']]);
     fputcsv($out, ['요약', '이웃 연결', $summary['neighbors']]);
     fputcsv($out, ['요약', '태그', $summary['tags']]);
@@ -736,7 +747,7 @@ if (($_GET['export'] ?? '') === 'admin') {
     }
 
     fputcsv($out, []);
-    fputcsv($out, ['게시글 관리', '번호', '제목', '작성자', '상태', '공개', '조회', '공감', '댓글', '작성일']);
+    fputcsv($out, ['게시글 관리', '번호', '제목', '작성자', '상태', '공개', '조회', '공감', '댓글 좋아요', '댓글', '작성일']);
     foreach ($recentPosts as $p) {
         fputcsv($out, [
             '게시글 관리',
@@ -747,6 +758,7 @@ if (($_GET['export'] ?? '') === 'admin') {
             $visibilityLabels[$p['visibility']] ?? $p['visibility'],
             $p['view_count'],
             $p['like_count'],
+            $p['comment_like_count'],
             $p['comment_count'],
             $p['created_at'],
         ]);
@@ -867,9 +879,9 @@ require_once __DIR__ . '/../app/header.php';
           <em>오늘 가입 <?= number_format($summary['today_users']) ?></em>
         </a>
         <div class="admin-ops__metric">
-          <strong><?= number_format($summary['likes'] + $summary['scraps']) ?></strong>
+          <strong><?= number_format($summary['likes'] + $summary['comment_likes'] + $summary['scraps']) ?></strong>
           <span>반응</span>
-          <em>공감 <?= number_format($summary['likes']) ?> · 스크랩 <?= number_format($summary['scraps']) ?></em>
+          <em>공감 <?= number_format($summary['likes']) ?> · 댓글 좋아요 <?= number_format($summary['comment_likes']) ?> · 스크랩 <?= number_format($summary['scraps']) ?></em>
         </div>
         <div class="admin-ops__metric">
           <strong><?= number_format($summary['neighbors']) ?></strong>
@@ -1087,7 +1099,7 @@ require_once __DIR__ . '/../app/header.php';
                 <td><a href="blog.php?id=<?= (int)$p['user_id'] ?>"><?= htmlspecialchars($p['nickname']) ?></a></td>
                 <td><span class="admin-badge"><?= htmlspecialchars($statusLabels[$p['status']] ?? $p['status']) ?></span></td>
                 <td><?= htmlspecialchars($visibilityLabels[$p['visibility']] ?? $p['visibility']) ?></td>
-                <td>조회 <?= (int)$p['view_count'] ?> · 공감 <?= (int)$p['like_count'] ?> · 댓글 <?= (int)$p['comment_count'] ?></td>
+                <td>조회 <?= (int)$p['view_count'] ?> · 공감 <?= (int)$p['like_count'] ?> · 댓글 좋아요 <?= (int)$p['comment_like_count'] ?> · 댓글 <?= (int)$p['comment_count'] ?></td>
                 <td><?= date('Y.m.d H:i', strtotime($p['created_at'])) ?></td>
                 <td>
                   <form class="admin-inline-form admin-inline-form--post" method="post" action="admin.php">
@@ -1136,7 +1148,7 @@ require_once __DIR__ . '/../app/header.php';
             <a href="view.php?id=<?= (int)$c['post_id'] ?>#comment-<?= (int)$c['id'] ?>">
               <strong><?= htmlspecialchars($c['writer_nickname']) ?></strong>
               <span><?= htmlspecialchars(mb_strimwidth($c['content'], 0, 70, '...')) ?></span>
-              <em><?= htmlspecialchars($c['post_title']) ?> · <?= date('m.d H:i', strtotime($c['created_at'])) ?></em>
+              <em><?= htmlspecialchars($c['post_title']) ?> · 좋아요 <?= (int)$c['comment_like_count'] ?> · <?= date('m.d H:i', strtotime($c['created_at'])) ?></em>
             </a>
             <form method="post" action="admin.php" data-confirm="이 댓글을 삭제할까요? 답글이 있으면 함께 삭제됩니다.">
               <input type="hidden" name="admin_action" value="comment_delete">

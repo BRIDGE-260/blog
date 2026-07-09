@@ -13,7 +13,7 @@ require_once __DIR__ . '/../app/db.php';
 $userId = (int)$_SESSION['user_id'];
 $key = trim($_POST['key'] ?? '');
 
-if ($key === '' || !preg_match('/^(comment|like|neighbor_post|guestbook):\d+$/', $key)) {
+if ($key === '' || !preg_match('/^(comment|like|comment_like|neighbor_post|guestbook):\d+$/', $key)) {
     http_response_code(400);
     echo json_encode(['ok' => false, 'message' => 'invalid_key']);
     exit;

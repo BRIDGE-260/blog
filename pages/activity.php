@@ -13,6 +13,21 @@ require_once __DIR__ . '/../app/db.php';
 
 $userId = (int)$_SESSION['user_id'];
 
+function activityTableExists(mysqli $conn, string $table): bool {
+    $stmt = $conn->prepare(
+        "SELECT COUNT(*) AS cnt
+         FROM information_schema.TABLES
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?"
+    );
+    $stmt->bind_param("s", $table);
+    $stmt->execute();
+    $exists = (int)($stmt->get_result()->fetch_assoc()['cnt'] ?? 0) > 0;
+    $stmt->close();
+    return $exists;
+}
+
+$hasCommentLikes = activityTableExists($conn, 'comment_likes');
+
 $visibilitySql =
     "(p.user_id = ?
       OR (
@@ -89,6 +104,30 @@ $stmt->execute();
 $scrappedPosts = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
+$likedComments = [];
+if ($hasCommentLikes) {
+    $stmt = $conn->prepare(
+        "SELECT cm.id AS comment_id, cm.content, cm.created_at AS comment_created_at,
+                cl.created_at AS acted_at, cu.nickname AS comment_nickname,
+                p.id AS post_id, p.title, p.view_count, u.nickname, c.name AS category_name,
+                (SELECT COUNT(*) FROM comments allc WHERE allc.post_id = p.id) AS comment_count,
+                (SELECT COUNT(*) FROM likes all_likes WHERE all_likes.post_id = p.id) AS like_count
+         FROM comment_likes cl
+         JOIN comments cm ON cm.id = cl.comment_id
+         JOIN users cu ON cu.id = cm.user_id
+         JOIN posts p ON p.id = cm.post_id
+         JOIN users u ON u.id = p.user_id
+         LEFT JOIN categories c ON c.id = p.category_id
+         WHERE cl.user_id = ? AND {$visibilitySql}
+         ORDER BY cl.created_at DESC
+         LIMIT 10"
+    );
+    $stmt->bind_param("iiii", $userId, $userId, $userId, $userId);
+    $stmt->execute();
+    $likedComments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+}
+
 $pageTitle = '내 활동 · BRIDGE 206';
 require_once __DIR__ . '/../app/header.php';
 ?>
@@ -107,7 +146,7 @@ require_once __DIR__ . '/../app/header.php';
     </nav>
   </div>
 
-  <div class="activity-grid activity-grid--three">
+  <div class="activity-grid <?= $hasCommentLikes ? 'activity-grid--four' : 'activity-grid--three' ?>">
     <section class="activity-panel">
       <div class="activity-panel__head">
         <h2>내가 댓글 단 글</h2>
@@ -170,6 +209,29 @@ require_once __DIR__ . '/../app/header.php';
         <p class="activity-empty">아직 스크랩한 글이 없어요.</p>
       <?php endif; ?>
     </section>
+
+    <?php if ($hasCommentLikes): ?>
+      <section class="activity-panel">
+        <div class="activity-panel__head">
+          <h2>좋아요한 댓글</h2>
+          <span><?= count($likedComments) ?>개</span>
+        </div>
+        <?php if ($likedComments): ?>
+          <div class="activity-list">
+            <?php foreach ($likedComments as $item): ?>
+              <a class="activity-item" href="view.php?id=<?= (int)$item['post_id'] ?>#comment-<?= (int)$item['comment_id'] ?>">
+                <span class="activity-item__type"><?= htmlspecialchars($item['category_name'] ?? '분류 없음') ?></span>
+                <strong><?= htmlspecialchars($item['title']) ?></strong>
+                <em><?= htmlspecialchars($item['comment_nickname']) ?>님의 댓글 · <?= date('Y.m.d H:i', strtotime($item['acted_at'])) ?>에 좋아요</em>
+                <small><?= htmlspecialchars(mb_strimwidth($item['content'], 0, 58, '...')) ?></small>
+              </a>
+            <?php endforeach; ?>
+          </div>
+        <?php else: ?>
+          <p class="activity-empty">아직 좋아요한 댓글이 없어요.</p>
+        <?php endif; ?>
+      </section>
+    <?php endif; ?>
   </div>
 </section>
 

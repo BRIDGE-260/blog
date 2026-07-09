@@ -919,5 +919,11 @@ html[data-theme="dark"] .password-field button {
   color: var(--accent-dark);
 }
 html[data-theme="dark"] .img::before {
-  filter: brightness(0.58) saturate(0.95);
+  background-image:
+    url("../images/bridge206-logo-white.png"),
+    radial-gradient(circle at 28% 30%, rgba(237, 28, 36, 0.16), transparent 25%),
+    radial-gradient(circle at 78% 36%, rgba(90, 151, 135, 0.18), transparent 27%),
+    radial-gradient(circle at 76% 78%, rgba(245, 130, 22, 0.18), transparent 26%),
+    linear-gradient(145deg, #161c27, #0d1118);
+  filter: none;
 }

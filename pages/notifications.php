@@ -13,7 +13,28 @@ if (!isset($_SESSION['user_id'])) {
 require_once __DIR__ . '/../app/db.php';
 
 $userId = $_SESSION['user_id'];
-$typeFilter = ($_GET['type'] ?? '') === 'neighbor_post' ? 'neighbor_post' : '';
+$typeFilter = $_GET['type'] ?? '';
+if (!in_array($typeFilter, ['', 'neighbor_post', 'comment_like'], true)) {
+    $typeFilter = '';
+}
+
+function notiTableExists(mysqli $conn, string $table): bool {
+    $stmt = $conn->prepare(
+        "SELECT COUNT(*) AS cnt
+         FROM information_schema.TABLES
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?"
+    );
+    $stmt->bind_param("s", $table);
+    $stmt->execute();
+    $exists = (int)($stmt->get_result()->fetch_assoc()['cnt'] ?? 0) > 0;
+    $stmt->close();
+    return $exists;
+}
+
+$hasCommentLikes = notiTableExists($conn, 'comment_likes');
+if (!$hasCommentLikes && $typeFilter === 'comment_like') {
+    $typeFilter = '';
+}
 
 // ① 내 글에 달린 댓글
 $stmt = $conn->prepare(
@@ -36,6 +57,7 @@ foreach ($rows as $r) {
         'key'     => 'comment:' . (int)$r['source_id'],
         'when'    => $r['created_at'],
         'nick'    => $r['nickname'],
+        'comment_id' => $r['source_id'],
         'post_id' => $r['post_id'],
         'title'   => $r['title'],
         'content' => $r['content'],
@@ -68,6 +90,36 @@ foreach ($rows as $r) {
 }
 
 // ③ 내가 추가한 이웃의 새 글
+if ($hasCommentLikes) {
+    $stmt = $conn->prepare(
+        "SELECT cl.id AS source_id, cl.created_at, u.nickname,
+                cm.id AS comment_id, cm.content, p.id AS post_id, p.title
+         FROM comment_likes cl
+         JOIN comments cm ON cm.id = cl.comment_id AND cm.user_id = ?
+         JOIN posts p ON p.id = cm.post_id
+         JOIN users u ON u.id = cl.user_id
+         WHERE cl.user_id <> ?
+         ORDER BY cl.created_at DESC LIMIT 30"
+    );
+    $stmt->bind_param("ii", $userId, $userId);
+    $stmt->execute();
+    $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    foreach ($rows as $r) {
+        $feed[] = [
+            'type'       => 'comment_like',
+            'key'        => 'comment_like:' . (int)$r['source_id'],
+            'when'       => $r['created_at'],
+            'nick'       => $r['nickname'],
+            'comment_id' => $r['comment_id'],
+            'post_id'    => $r['post_id'],
+            'title'      => $r['title'],
+            'content'    => $r['content'],
+        ];
+    }
+}
+
 $stmt = $conn->prepare(
     "SELECT p.id AS post_id, p.title, p.created_at, u.nickname
      FROM posts p
@@ -156,6 +208,9 @@ require_once __DIR__ . '/../app/header.php';
   <h1>내 소식</h1>
   <nav class="noti-tabs">
     <a class="<?= $typeFilter === '' ? 'on' : '' ?>" href="notifications.php">전체 소식</a>
+    <?php if ($hasCommentLikes): ?>
+      <a class="<?= $typeFilter === 'comment_like' ? 'on' : '' ?>" href="notifications.php?type=comment_like">댓글 좋아요</a>
+    <?php endif; ?>
     <a class="<?= $typeFilter === 'neighbor_post' ? 'on' : '' ?>" href="notifications.php?type=neighbor_post">이웃 새 글만</a>
     <a href="neighbor_posts.php">이웃 새 글 전체</a>
   </nav>
@@ -167,13 +222,18 @@ require_once __DIR__ . '/../app/header.php';
       <?php foreach ($feed as $f): ?>
         <?php
           $isRead = isset($readMap[$f['key']]);
-          $href = $f['type'] === 'guestbook'
-            ? 'guestbook.php?id=' . (int)$userId . '&from=notifications'
-            : 'view.php?id=' . (int)$f['post_id'] . '&from=notifications';
+          if ($f['type'] === 'guestbook') {
+            $href = 'guestbook.php?id=' . (int)$userId . '&from=notifications';
+          } else {
+            $href = 'view.php?id=' . (int)$f['post_id'] . '&from=notifications';
+            if (!empty($f['comment_id'])) {
+              $href .= '#comment-' . (int)$f['comment_id'];
+            }
+          }
         ?>
         <li class="noti-item <?= $isRead ? 'is-read' : 'is-unread' ?>">
           <span class="noti-item__icon">
-            <?php if ($f['type'] === 'comment'): ?>💬<?php elseif ($f['type'] === 'like'): ?>♥<?php elseif ($f['type'] === 'guestbook'): ?>✎<?php else: ?>＋<?php endif; ?>
+            <?php if ($f['type'] === 'comment'): ?>💬<?php elseif ($f['type'] === 'like' || $f['type'] === 'comment_like'): ?>♥<?php elseif ($f['type'] === 'guestbook'): ?>✎<?php else: ?>＋<?php endif; ?>
           </span>
           <a class="noti-item__body" href="<?= htmlspecialchars($href) ?>" data-noti-key="<?= htmlspecialchars($f['key']) ?>">
             <span class="noti-item__line">
@@ -182,13 +242,16 @@ require_once __DIR__ . '/../app/header.php';
                 “<?= htmlspecialchars($f['title']) ?>”을 올렸어요
               <?php elseif ($f['type'] === 'guestbook'): ?>
                 <b><?= htmlspecialchars($f['nick']) ?>님</b>이 내 방명록에 글을 남겼어요
+              <?php elseif ($f['type'] === 'comment_like'): ?>
+                <b><?= htmlspecialchars($f['nick']) ?>님</b>이
+                “<?= htmlspecialchars($f['title']) ?>”의 내 댓글을 좋아했어요
               <?php else: ?>
                 <b><?= htmlspecialchars($f['nick']) ?>님</b>이
                 “<?= htmlspecialchars($f['title']) ?>”에
                 <?= $f['type'] === 'comment' ? '댓글을 남겼어요' : '공감했어요' ?>
               <?php endif; ?>
             </span>
-            <?php if ($f['type'] === 'comment' || $f['type'] === 'guestbook'): ?>
+            <?php if ($f['type'] === 'comment' || $f['type'] === 'guestbook' || $f['type'] === 'comment_like'): ?>
               <span class="noti-item__sub"><?= htmlspecialchars(mb_strimwidth($f['content'], 0, 60, '…')) ?></span>
             <?php endif; ?>
             <span class="noti-item__date"><?= date('Y.m.d H:i', strtotime($f['when'])) ?></span>

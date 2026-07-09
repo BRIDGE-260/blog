@@ -81,8 +81,16 @@ if (isset($_SESSION['user_id'])) {
         exit;
     }
 
-    $stmt = $conn->prepare(
-        "SELECT COUNT(*) AS cnt
+    $commentLikesTableResult = $conn->query("SHOW TABLES LIKE 'comment_likes'");
+    $hasCommentLikes = $commentLikesTableResult && $commentLikesTableResult->num_rows > 0;
+    $commentLikeUnreadSql = $hasCommentLikes
+        ? "UNION ALL
+            SELECT CONCAT('comment_like:', cl.id) AS nkey
+            FROM comment_likes cl
+            JOIN comments cm ON cm.id = cl.comment_id AND cm.user_id = ?
+            WHERE cl.user_id <> ?"
+        : "";
+    $unreadSql = "SELECT COUNT(*) AS cnt
          FROM (
             SELECT CONCAT('comment:', cm.id) AS nkey
             FROM comments cm
@@ -93,6 +101,7 @@ if (isset($_SESSION['user_id'])) {
             FROM likes l
             JOIN posts p ON p.id = l.post_id
             WHERE p.user_id = ? AND l.user_id <> ?
+            $commentLikeUnreadSql
             UNION ALL
             SELECT CONCAT('neighbor_post:', p.id) AS nkey
             FROM posts p
@@ -107,16 +116,28 @@ if (isset($_SESSION['user_id'])) {
          ) n
          LEFT JOIN notification_reads nr
            ON nr.user_id = ? AND nr.notification_key = n.nkey
-         WHERE nr.id IS NULL"
-    );
-    $stmt->bind_param(
-        "iiiiiiiii",
-        $_SESSION['user_id'], $_SESSION['user_id'],
-        $_SESSION['user_id'], $_SESSION['user_id'],
-        $_SESSION['user_id'], $_SESSION['user_id'],
-        $_SESSION['user_id'], $_SESSION['user_id'],
-        $_SESSION['user_id']
-    );
+         WHERE nr.id IS NULL";
+    $stmt = $conn->prepare($unreadSql);
+    if ($hasCommentLikes) {
+        $stmt->bind_param(
+            "iiiiiiiiiii",
+            $_SESSION['user_id'], $_SESSION['user_id'],
+            $_SESSION['user_id'], $_SESSION['user_id'],
+            $_SESSION['user_id'], $_SESSION['user_id'],
+            $_SESSION['user_id'], $_SESSION['user_id'],
+            $_SESSION['user_id'], $_SESSION['user_id'],
+            $_SESSION['user_id']
+        );
+    } else {
+        $stmt->bind_param(
+            "iiiiiiiii",
+            $_SESSION['user_id'], $_SESSION['user_id'],
+            $_SESSION['user_id'], $_SESSION['user_id'],
+            $_SESSION['user_id'], $_SESSION['user_id'],
+            $_SESSION['user_id'], $_SESSION['user_id'],
+            $_SESSION['user_id']
+        );
+    }
     $stmt->execute();
     $unreadNotifications = (int)($stmt->get_result()->fetch_assoc()['cnt'] ?? 0);
     $stmt->close();
@@ -153,7 +174,8 @@ if (isset($_SESSION['user_id'])) {
 
 <header class="topbar">
   <a class="topbar__brand" href="index.php" aria-label="BRIDGE 206 home">
-    <img src="../assets/images/bridge206-logo.png" alt="BRIDGE 206">
+    <img class="site-logo site-logo--light" src="../assets/images/bridge206-logo.png" alt="BRIDGE 206">
+    <img class="site-logo site-logo--dark" src="../assets/images/bridge206-logo-white.png" alt="" aria-hidden="true">
   </a>
   <?php if ($isIndexPage): ?>
     <nav class="topbar__nav" aria-label="Main shortcuts">
@@ -214,7 +236,8 @@ if (isset($_SESSION['user_id'])) {
   <div class="side-menu__head">
     <div class="side-menu__kicker">BRIDGE 206</div>
     <div class="side-menu__brand">
-      <img src="../assets/images/bridge206-logo.png" alt="BRIDGE 206">
+      <img class="site-logo site-logo--light" src="../assets/images/bridge206-logo.png" alt="BRIDGE 206">
+      <img class="site-logo site-logo--dark" src="../assets/images/bridge206-logo-white.png" alt="" aria-hidden="true">
     </div>
     <p>20대와 60대를 넘어<br>모든 세대를 잇는 블로그</p>
     <button class="side-menu__close" type="button" aria-label="Close menu" data-menu-close>×</button>

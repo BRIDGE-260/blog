@@ -14,6 +14,8 @@ require_once __DIR__ . '/../app/db.php';
 $userId = (int)$_SESSION['user_id'];
 $visitEventsResult = $conn->query("SHOW TABLES LIKE 'visit_events'");
 $hasVisitEvents = $visitEventsResult && $visitEventsResult->num_rows > 0;
+$commentLikesResult = $conn->query("SHOW TABLES LIKE 'comment_likes'");
+$hasCommentLikes = $commentLikesResult && $commentLikesResult->num_rows > 0;
 
 function statOne(mysqli $conn, string $sql, int $userId): int {
     $stmt = $conn->prepare($sql);
@@ -58,10 +60,12 @@ $publishedCount = statOne($conn, "SELECT COUNT(*) AS cnt FROM posts WHERE user_i
 $draftCount = statOne($conn, "SELECT COUNT(*) AS cnt FROM posts WHERE user_id = ? AND status = 'draft'", $userId);
 $totalViews = statOne($conn, "SELECT COALESCE(SUM(view_count), 0) AS cnt FROM posts WHERE user_id = ?", $userId);
 $totalLikes = statOne($conn, "SELECT COUNT(*) AS cnt FROM likes l JOIN posts p ON p.id = l.post_id WHERE p.user_id = ?", $userId);
+$totalCommentLikes = $hasCommentLikes ? statOne($conn, "SELECT COUNT(*) AS cnt FROM comment_likes cl JOIN comments c ON c.id = cl.comment_id JOIN posts p ON p.id = c.post_id WHERE p.user_id = ?", $userId) : 0;
 $totalComments = statOne($conn, "SELECT COUNT(*) AS cnt FROM comments c JOIN posts p ON p.id = c.post_id WHERE p.user_id = ?", $userId);
 $totalScraps = statOne($conn, "SELECT COUNT(*) AS cnt FROM scraps s JOIN posts p ON p.id = s.post_id WHERE p.user_id = ?", $userId);
 $newComments = statTwo($conn, "SELECT COUNT(*) AS cnt FROM comments c JOIN posts p ON p.id = c.post_id WHERE p.user_id = ? AND c.user_id <> ?", $userId, $userId);
 $newLikes = statTwo($conn, "SELECT COUNT(*) AS cnt FROM likes l JOIN posts p ON p.id = l.post_id WHERE p.user_id = ? AND l.user_id <> ?", $userId, $userId);
+$newCommentLikes = $hasCommentLikes ? statTwo($conn, "SELECT COUNT(*) AS cnt FROM comment_likes cl JOIN comments c ON c.id = cl.comment_id JOIN posts p ON p.id = c.post_id WHERE p.user_id = ? AND cl.user_id <> ?", $userId, $userId) : 0;
 $neighborCount = statOne($conn, "SELECT COUNT(*) AS cnt FROM neighbors WHERE neighbor_id = ?", $userId);
 $guestbookCount = statOne($conn, "SELECT COUNT(*) AS cnt FROM guestbook WHERE owner_id = ?", $userId);
 
@@ -141,6 +145,7 @@ if ($hasVisitEvents) {
 $stmt = $conn->prepare(
     "SELECT p.id, p.title, p.view_count, p.status, p.created_at,
             (SELECT COUNT(*) FROM likes l WHERE l.post_id = p.id) AS like_count,
+            " . ($hasCommentLikes ? "(SELECT COUNT(*) FROM comment_likes cl JOIN comments cc ON cc.id = cl.comment_id WHERE cc.post_id = p.id)" : "0") . " AS comment_like_count,
             (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count,
             (SELECT COUNT(*) FROM scraps s WHERE s.post_id = p.id) AS scrap_count
      FROM posts p
@@ -158,6 +163,7 @@ $stmt = $conn->prepare(
             COUNT(p.id) AS post_count,
             COALESCE(SUM(p.view_count), 0) AS view_count,
             (SELECT COUNT(*) FROM likes l JOIN posts lp ON lp.id = l.post_id WHERE lp.user_id = ? AND COALESCE(lp.category_id, 0) = COALESCE(c.id, 0)) AS like_count,
+            " . ($hasCommentLikes ? "(SELECT COUNT(*) FROM comment_likes cl JOIN comments cm ON cm.id = cl.comment_id JOIN posts cp ON cp.id = cm.post_id WHERE cp.user_id = ? AND COALESCE(cp.category_id, 0) = COALESCE(c.id, 0))" : "0") . " AS comment_like_count,
             (SELECT COUNT(*) FROM comments cm JOIN posts cp ON cp.id = cm.post_id WHERE cp.user_id = ? AND COALESCE(cp.category_id, 0) = COALESCE(c.id, 0)) AS comment_count
      FROM posts p
      LEFT JOIN categories c ON c.id = p.category_id
@@ -166,7 +172,11 @@ $stmt = $conn->prepare(
      ORDER BY view_count DESC, post_count DESC
      LIMIT 6"
 );
-$stmt->bind_param("iii", $userId, $userId, $userId);
+if ($hasCommentLikes) {
+    $stmt->bind_param("iiii", $userId, $userId, $userId, $userId);
+} else {
+    $stmt->bind_param("iii", $userId, $userId, $userId);
+}
 $stmt->execute();
 $categoryStats = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
@@ -201,6 +211,7 @@ if (($_GET['export'] ?? '') === 'stats') {
     fputcsv($out, ['요약', '임시저장', $draftCount]);
     fputcsv($out, ['요약', '글 조회', $totalViews]);
     fputcsv($out, ['요약', '공감', $totalLikes]);
+    fputcsv($out, ['요약', '댓글 좋아요', $totalCommentLikes]);
     fputcsv($out, ['요약', '댓글', $totalComments]);
     fputcsv($out, ['요약', '스크랩', $totalScraps]);
     fputcsv($out, ['요약', '이웃에게 추가된 수', $neighborCount]);
@@ -215,10 +226,10 @@ if (($_GET['export'] ?? '') === 'stats') {
         fputcsv($out, ['성별 방문', $r['label'], (int)$r['cnt']]);
     }
     foreach ($topPosts as $p) {
-        fputcsv($out, ['인기 글', $p['title'], '조회 ' . $p['view_count'] . ' / 공감 ' . $p['like_count'] . ' / 댓글 ' . $p['comment_count']]);
+        fputcsv($out, ['인기 글', $p['title'], '조회 ' . $p['view_count'] . ' / 공감 ' . $p['like_count'] . ' / 댓글 좋아요 ' . $p['comment_like_count'] . ' / 댓글 ' . $p['comment_count']]);
     }
     foreach ($categoryStats as $c) {
-        fputcsv($out, ['카테고리 성과', $c['category_name'], '글 ' . $c['post_count'] . ' / 조회 ' . $c['view_count'] . ' / 공감 ' . $c['like_count'] . ' / 댓글 ' . $c['comment_count']]);
+        fputcsv($out, ['카테고리 성과', $c['category_name'], '글 ' . $c['post_count'] . ' / 조회 ' . $c['view_count'] . ' / 공감 ' . $c['like_count'] . ' / 댓글 좋아요 ' . $c['comment_like_count'] . ' / 댓글 ' . $c['comment_count']]);
     }
     foreach ($topCommenters as $c) {
         fputcsv($out, ['댓글 방문자', $c['nickname'], $c['comment_count']]);
@@ -254,6 +265,23 @@ $stmt->bind_param("ii", $userId, $userId);
 $stmt->execute();
 $recentReactions = array_merge($recentReactions, $stmt->get_result()->fetch_all(MYSQLI_ASSOC));
 $stmt->close();
+
+if ($hasCommentLikes) {
+    $stmt = $conn->prepare(
+        "SELECT 'comment_like' AS type, cl.created_at, cm.content AS body, p.id AS post_id, p.title, u.nickname
+         FROM comment_likes cl
+         JOIN comments cm ON cm.id = cl.comment_id
+         JOIN posts p ON p.id = cm.post_id
+         JOIN users u ON u.id = cl.user_id
+         WHERE p.user_id = ? AND cl.user_id <> ?
+         ORDER BY cl.created_at DESC
+         LIMIT 5"
+    );
+    $stmt->bind_param("ii", $userId, $userId);
+    $stmt->execute();
+    $recentReactions = array_merge($recentReactions, $stmt->get_result()->fetch_all(MYSQLI_ASSOC));
+    $stmt->close();
+}
 
 usort($recentReactions, fn($a, $b) => strcmp($b['created_at'], $a['created_at']));
 $recentReactions = array_slice($recentReactions, 0, 8);
@@ -291,9 +319,9 @@ require_once __DIR__ . '/../app/header.php';
           <em>최근 7일 흐름 보기</em>
         </a>
         <a class="blog-ops__metric" href="#reactions">
-          <strong><?= number_format($newComments + $newLikes) ?></strong>
+          <strong><?= number_format($newComments + $newLikes + $newCommentLikes) ?></strong>
           <span>새 반응</span>
-          <em>댓글 <?= number_format($newComments) ?> · 공감 <?= number_format($newLikes) ?></em>
+          <em>댓글 <?= number_format($newComments) ?> · 공감 <?= number_format($newLikes) ?> · 댓글 좋아요 <?= number_format($newCommentLikes) ?></em>
         </a>
         <a class="blog-ops__metric" href="blog.php?id=<?= $userId ?>&status=draft">
           <strong><?= number_format($draftCount) ?></strong>
@@ -329,9 +357,9 @@ require_once __DIR__ . '/../app/header.php';
       </div>
       <div class="blog-ops__list">
         <a class="blog-ops__metric" href="#reactions">
-          <strong><?= number_format($totalLikes + $totalComments + $totalScraps) ?></strong>
+          <strong><?= number_format($totalLikes + $totalCommentLikes + $totalComments + $totalScraps) ?></strong>
           <span>전체 반응</span>
-          <em>공감 <?= number_format($totalLikes) ?> · 댓글 <?= number_format($totalComments) ?> · 스크랩 <?= number_format($totalScraps) ?></em>
+          <em>공감 <?= number_format($totalLikes) ?> · 댓글 좋아요 <?= number_format($totalCommentLikes) ?> · 댓글 <?= number_format($totalComments) ?> · 스크랩 <?= number_format($totalScraps) ?></em>
         </a>
         <a class="blog-ops__metric" href="#regulars">
           <strong><?= number_format($neighborCount) ?></strong>
@@ -429,6 +457,9 @@ require_once __DIR__ . '/../app/header.php';
       <div class="dashboard-reaction-counts">
         <a href="notifications.php"><strong><?= number_format($newComments) ?></strong><span>댓글</span></a>
         <a href="notifications.php"><strong><?= number_format($newLikes) ?></strong><span>공감</span></a>
+        <?php if ($hasCommentLikes): ?>
+          <a href="notifications.php?type=comment_like"><strong><?= number_format($newCommentLikes) ?></strong><span>댓글 좋아요</span></a>
+        <?php endif; ?>
       </div>
       <p class="dashboard-note">새로 들어온 알림은 소식 화면에서 따로 확인할 수 있어요.</p>
     </section>
@@ -445,7 +476,7 @@ require_once __DIR__ . '/../app/header.php';
               <b><?= $i + 1 ?></b>
               <span>
                 <strong><?= htmlspecialchars($p['title']) ?></strong>
-                <em>조회 <?= number_format($p['view_count']) ?> · 공감 <?= number_format($p['like_count']) ?> · 댓글 <?= number_format($p['comment_count']) ?> · 스크랩 <?= number_format($p['scrap_count']) ?></em>
+                <em>조회 <?= number_format($p['view_count']) ?> · 공감 <?= number_format($p['like_count']) ?> · 댓글 좋아요 <?= number_format($p['comment_like_count']) ?> · 댓글 <?= number_format($p['comment_count']) ?> · 스크랩 <?= number_format($p['scrap_count']) ?></em>
               </span>
               <i style="width: <?= round(((int)$p['view_count']) / max(1, (int)$topPosts[0]['view_count']) * 100) ?>%"></i>
             </a>
@@ -465,7 +496,7 @@ require_once __DIR__ . '/../app/header.php';
         <div class="dashboard-feed">
           <?php foreach ($recentReactions as $r): ?>
             <a href="view.php?id=<?= (int)$r['post_id'] ?>">
-              <strong><?= htmlspecialchars($r['nickname']) ?>님이 <?= $r['type'] === 'like' ? '공감했어요' : '댓글을 남겼어요' ?></strong>
+              <strong><?= htmlspecialchars($r['nickname']) ?>님이 <?= $r['type'] === 'like' ? '공감했어요' : ($r['type'] === 'comment_like' ? '댓글을 좋아했어요' : '댓글을 남겼어요') ?></strong>
               <span><?= htmlspecialchars($r['title']) ?></span>
               <?php if ($r['body'] !== ''): ?>
                 <em><?= htmlspecialchars(mb_strimwidth($r['body'], 0, 70, '...')) ?></em>
@@ -532,7 +563,7 @@ require_once __DIR__ . '/../app/header.php';
               <b><?= number_format((int)$c['post_count']) ?></b>
               <span>
                 <strong><?= htmlspecialchars($c['category_name']) ?></strong>
-                <em>조회 <?= number_format((int)$c['view_count']) ?> · 공감 <?= number_format((int)$c['like_count']) ?> · 댓글 <?= number_format((int)$c['comment_count']) ?></em>
+                <em>조회 <?= number_format((int)$c['view_count']) ?> · 공감 <?= number_format((int)$c['like_count']) ?> · 댓글 좋아요 <?= number_format((int)$c['comment_like_count']) ?> · 댓글 <?= number_format((int)$c['comment_count']) ?></em>
               </span>
             </a>
           <?php endforeach; ?>
