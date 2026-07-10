@@ -197,44 +197,79 @@ $topCommenters = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
 if (($_GET['export'] ?? '') === 'stats') {
-    header('Content-Type: text/csv; charset=UTF-8');
-    $csvFilename = 'bridge206_stats_' . date('Ymd') . '.csv';
-    header('Content-Disposition: attachment; filename="' . $csvFilename . '"; filename*=UTF-8\'\'' . rawurlencode($csvFilename));
-    header('Content-Transfer-Encoding: binary');
-    echo "\xEF\xBB\xBF";
-    echo "sep=,\r\n";
-    $out = fopen('php://output', 'w');
-    fputcsv($out, ['구분', '항목', '값']);
-    fputcsv($out, ['요약', '오늘 방문', $todayCount]);
-    fputcsv($out, ['요약', '누적 방문', $totalVisit]);
-    fputcsv($out, ['요약', '발행 글', $publishedCount]);
-    fputcsv($out, ['요약', '임시저장', $draftCount]);
-    fputcsv($out, ['요약', '글 조회', $totalViews]);
-    fputcsv($out, ['요약', '공감', $totalLikes]);
-    fputcsv($out, ['요약', '댓글 좋아요', $totalCommentLikes]);
-    fputcsv($out, ['요약', '댓글', $totalComments]);
-    fputcsv($out, ['요약', '스크랩', $totalScraps]);
-    fputcsv($out, ['요약', '이웃에게 추가된 수', $neighborCount]);
-    fputcsv($out, ['요약', '방명록', $guestbookCount]);
+    require_once __DIR__ . '/../app/excel_export.php';
+    bridge206ExcelDownloadHeaders(bridge206ExcelFilename('bridge206_stats'));
+    bridge206ExcelStart('BRIDGE 206 블로그 현황', '다운로드 일시: ' . date('Y-m-d H:i:s'));
+
+    $summaryRows = [
+        ['오늘 방문', ['value' => $todayCount, 'class' => 'num']],
+        ['누적 방문', ['value' => $totalVisit, 'class' => 'num']],
+        ['발행 글', ['value' => $publishedCount, 'class' => 'num']],
+        ['임시저장', ['value' => $draftCount, 'class' => 'num']],
+        ['글 조회', ['value' => $totalViews, 'class' => 'num']],
+        ['공감', ['value' => $totalLikes, 'class' => 'num']],
+        ['댓글 좋아요', ['value' => $totalCommentLikes, 'class' => 'num']],
+        ['댓글', ['value' => $totalComments, 'class' => 'num']],
+        ['스크랩', ['value' => $totalScraps, 'class' => 'num']],
+        ['이웃에게 추가된 수', ['value' => $neighborCount, 'class' => 'num']],
+        ['방명록', ['value' => $guestbookCount, 'class' => 'num']],
+    ];
+
+    $visitRows = [];
     foreach ($days as $d) {
-        fputcsv($out, ['최근 7일 방문', $d['date'], $d['count']]);
+        $visitRows[] = [['value' => $d['date'], 'class' => 'date'], ['value' => $d['count'], 'class' => 'num']];
     }
+    bridge206ExcelTableGroup([
+        ['title' => '요약', 'headers' => ['항목', '값'], 'rows' => $summaryRows, 'widths' => [210, 110]],
+        ['title' => '최근 7일 방문', 'headers' => ['날짜', '방문 수'], 'rows' => $visitRows, 'widths' => [170, 110]],
+    ]);
+
+    $hourExportRows = [];
     foreach ($hourRows as $r) {
-        fputcsv($out, ['시간대별 방문', sprintf('%02d시', (int)$r['visit_hour']), (int)$r['cnt']]);
+        $hourExportRows[] = [sprintf('%02d시', (int)$r['visit_hour']), ['value' => (int)$r['cnt'], 'class' => 'num']];
     }
+    $genderExportRows = [];
     foreach ($genderRows as $r) {
-        fputcsv($out, ['성별 방문', $r['label'], (int)$r['cnt']]);
+        $genderExportRows[] = [$r['label'], ['value' => (int)$r['cnt'], 'class' => 'num']];
     }
+    bridge206ExcelTableGroup([
+        ['title' => '시간대별 방문', 'headers' => ['시간대', '방문 수'], 'rows' => $hourExportRows ?: [['기록 없음', ['value' => 0, 'class' => 'num']]], 'widths' => [150, 110]],
+        ['title' => '성별 방문', 'headers' => ['성별', '방문 수'], 'rows' => $genderExportRows ?: [['기록 없음', ['value' => 0, 'class' => 'num']]], 'widths' => [150, 110]],
+    ]);
+
+    $postRows = [];
     foreach ($topPosts as $p) {
-        fputcsv($out, ['인기 글', $p['title'], '조회 ' . $p['view_count'] . ' / 공감 ' . $p['like_count'] . ' / 댓글 좋아요 ' . $p['comment_like_count'] . ' / 댓글 ' . $p['comment_count']]);
+        $postRows[] = [
+            $p['title'],
+            ['value' => $p['view_count'], 'class' => 'num'],
+            ['value' => $p['like_count'], 'class' => 'num'],
+            ['value' => $p['comment_like_count'], 'class' => 'num'],
+            ['value' => $p['comment_count'], 'class' => 'num'],
+            ['value' => bridge206ExcelDate($p['created_at']), 'class' => 'date'],
+        ];
     }
+    bridge206ExcelTable('인기 글', ['제목', '조회', '공감', '댓글 좋아요', '댓글', '작성일'], $postRows ?: [['기록 없음', 0, 0, 0, 0, '기록 없음']], [340, 80, 80, 100, 80, 150]);
+
+    $categoryRows = [];
     foreach ($categoryStats as $c) {
-        fputcsv($out, ['카테고리 성과', $c['category_name'], '글 ' . $c['post_count'] . ' / 조회 ' . $c['view_count'] . ' / 공감 ' . $c['like_count'] . ' / 댓글 좋아요 ' . $c['comment_like_count'] . ' / 댓글 ' . $c['comment_count']]);
+        $categoryRows[] = [
+            $c['category_name'],
+            ['value' => $c['post_count'], 'class' => 'num'],
+            ['value' => $c['view_count'], 'class' => 'num'],
+            ['value' => $c['like_count'], 'class' => 'num'],
+            ['value' => $c['comment_like_count'], 'class' => 'num'],
+            ['value' => $c['comment_count'], 'class' => 'num'],
+        ];
     }
+    bridge206ExcelTable('카테고리 성과', ['카테고리', '글', '조회', '공감', '댓글 좋아요', '댓글'], $categoryRows ?: [['기록 없음', 0, 0, 0, 0, 0]], [180, 70, 80, 80, 100, 80]);
+
+    $commenterRows = [];
     foreach ($topCommenters as $c) {
-        fputcsv($out, ['댓글 방문자', $c['nickname'], $c['comment_count']]);
+        $commenterRows[] = [$c['nickname'], ['value' => $c['comment_count'], 'class' => 'num']];
     }
-    fclose($out);
+    bridge206ExcelTable('댓글 방문자', ['닉네임', '댓글 수'], $commenterRows ?: [['기록 없음', 0]], [180, 100]);
+
+    bridge206ExcelEnd();
     exit;
 }
 

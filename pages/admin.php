@@ -699,42 +699,42 @@ if (!$opsChecklist) {
 }
 
 if (($_GET['export'] ?? '') === 'admin') {
-    header('Content-Type: text/csv; charset=UTF-8');
-    $csvFilename = 'bridge206_admin_' . date('Ymd') . '.csv';
-    header('Content-Disposition: attachment; filename="' . $csvFilename . '"; filename*=UTF-8\'\'' . rawurlencode($csvFilename));
-    header('Content-Transfer-Encoding: binary');
-    echo "\xEF\xBB\xBF";
-    echo "sep=,\r\n";
-    $out = fopen('php://output', 'w');
+    require_once __DIR__ . '/../app/excel_export.php';
+    bridge206ExcelDownloadHeaders(bridge206ExcelFilename('bridge206_admin'));
+    bridge206ExcelStart('BRIDGE 206 관리자 대시보드', '기준: ' . $periodLabel . ' / 다운로드 일시: ' . date('Y-m-d H:i:s'));
 
-    fputcsv($out, ['구분', '항목', '값']);
-    fputcsv($out, ['요약', '기준', $periodLabel]);
-    fputcsv($out, ['요약', '회원', $summary['users']]);
-    fputcsv($out, ['요약', '밴 회원', $summary['banned_users']]);
-    fputcsv($out, ['요약', '오늘 가입', $summary['today_users']]);
-    fputcsv($out, ['요약', '전체 글', $summary['posts']]);
-    fputcsv($out, ['요약', '발행 글', $summary['published']]);
-    fputcsv($out, ['요약', '임시저장', $summary['drafts']]);
-    fputcsv($out, ['요약', '댓글', $summary['comments']]);
-    fputcsv($out, ['요약', '방명록', $summary['guestbook']]);
-    fputcsv($out, ['요약', '대기 신고', $summary['pending_reports']]);
-    fputcsv($out, ['요약', '공감', $summary['likes']]);
-    fputcsv($out, ['요약', '댓글 좋아요', $summary['comment_likes']]);
-    fputcsv($out, ['요약', '스크랩', $summary['scraps']]);
-    fputcsv($out, ['요약', '이웃 연결', $summary['neighbors']]);
-    fputcsv($out, ['요약', '태그', $summary['tags']]);
-    fputcsv($out, ['요약', '오늘 방문', $summary['today_visit']]);
-    fputcsv($out, ['요약', '누적 방문', $summary['total_visit']]);
+    $summaryRows = [
+        ['기준', $periodLabel],
+        ['회원', ['value' => $summary['users'], 'class' => 'num']],
+        ['밴 회원', ['value' => $summary['banned_users'], 'class' => 'num']],
+        ['오늘 가입', ['value' => $summary['today_users'], 'class' => 'num']],
+        ['전체 글', ['value' => $summary['posts'], 'class' => 'num']],
+        ['발행 글', ['value' => $summary['published'], 'class' => 'num']],
+        ['임시저장', ['value' => $summary['drafts'], 'class' => 'num']],
+        ['댓글', ['value' => $summary['comments'], 'class' => 'num']],
+        ['방명록', ['value' => $summary['guestbook'], 'class' => 'num']],
+        ['대기 신고', ['value' => $summary['pending_reports'], 'class' => 'num']],
+        ['공감', ['value' => $summary['likes'], 'class' => 'num']],
+        ['댓글 좋아요', ['value' => $summary['comment_likes'], 'class' => 'num']],
+        ['스크랩', ['value' => $summary['scraps'], 'class' => 'num']],
+        ['이웃 연결', ['value' => $summary['neighbors'], 'class' => 'num']],
+        ['태그', ['value' => $summary['tags'], 'class' => 'num']],
+        ['오늘 방문', ['value' => $summary['today_visit'], 'class' => 'num']],
+        ['누적 방문', ['value' => $summary['total_visit'], 'class' => 'num']],
+    ];
 
+    $checkRows = [];
     foreach ($opsChecklist as $item) {
-        fputcsv($out, ['운영 체크리스트', $item['title'], $item['body']]);
+        $checkRows[] = [$item['title'], $item['body']];
     }
+    bridge206ExcelTableGroup([
+        ['title' => '요약', 'headers' => ['항목', '값'], 'rows' => $summaryRows, 'widths' => [200, 120]],
+        ['title' => '운영 체크리스트', 'headers' => ['항목', '내용'], 'rows' => $checkRows, 'widths' => [180, 420]],
+    ]);
 
-    fputcsv($out, []);
-    fputcsv($out, ['회원 관리', '번호', '닉네임', '이름', '이메일', '블로그', '상태', '관리자', '가입일']);
+    $userRows = [];
     foreach ($recentUsers as $u) {
-        fputcsv($out, [
-            '회원 관리',
+        $userRows[] = [
             $u['id'],
             $u['nickname'],
             $u['name'],
@@ -742,33 +742,31 @@ if (($_GET['export'] ?? '') === 'admin') {
             $u['blog_title'] ?: $u['nickname'] . '의 블로그',
             (int)$u['is_banned'] === 1 ? '밴' : '정상',
             (int)$u['is_admin'] === 1 ? '관리자' : '일반',
-            $u['created_at'],
-        ]);
+            ['value' => bridge206ExcelDate($u['created_at']), 'class' => 'date'],
+        ];
     }
+    bridge206ExcelTable('회원 관리', ['번호', '닉네임', '이름', '이메일', '블로그', '상태', '권한', '가입일'], $userRows ?: [['-', '-', '-', '-', '-', '-', '-', '기록 없음']], [70, 130, 100, 220, 220, 80, 80, 150]);
 
-    fputcsv($out, []);
-    fputcsv($out, ['게시글 관리', '번호', '제목', '작성자', '상태', '공개', '조회', '공감', '댓글 좋아요', '댓글', '작성일']);
+    $postRows = [];
     foreach ($recentPosts as $p) {
-        fputcsv($out, [
-            '게시글 관리',
+        $postRows[] = [
             $p['id'],
             $p['title'],
             $p['nickname'],
             $statusLabels[$p['status']] ?? $p['status'],
             $visibilityLabels[$p['visibility']] ?? $p['visibility'],
-            $p['view_count'],
-            $p['like_count'],
-            $p['comment_like_count'],
-            $p['comment_count'],
-            $p['created_at'],
-        ]);
+            ['value' => $p['view_count'], 'class' => 'num'],
+            ['value' => $p['like_count'], 'class' => 'num'],
+            ['value' => $p['comment_like_count'], 'class' => 'num'],
+            ['value' => $p['comment_count'], 'class' => 'num'],
+            ['value' => bridge206ExcelDate($p['created_at']), 'class' => 'date'],
+        ];
     }
+    bridge206ExcelTable('게시글 관리', ['번호', '제목', '작성자', '상태', '공개', '조회', '공감', '댓글 좋아요', '댓글', '작성일'], $postRows ?: [['-', '-', '-', '-', '-', 0, 0, 0, 0, '기록 없음']], [70, 300, 120, 90, 100, 70, 70, 100, 70, 150]);
 
-    fputcsv($out, []);
-    fputcsv($out, ['신고 관리', '번호', '대상', '대상 번호', '대상 내용', '신고자', '상태', '사유', '처리 메모', '접수일']);
+    $reportRows = [];
     foreach ($recentReports as $report) {
-        fputcsv($out, [
-            '신고 관리',
+        $reportRows[] = [
             $report['id'],
             $reportTargetLabels[$report['target_type']] ?? $report['target_type'],
             $report['target_id'],
@@ -777,11 +775,12 @@ if (($_GET['export'] ?? '') === 'admin') {
             $reportStatusLabels[$report['status']] ?? $report['status'],
             $report['reason'],
             $report['admin_note'] ?? '',
-            $report['created_at'],
-        ]);
+            ['value' => bridge206ExcelDate($report['created_at']), 'class' => 'date'],
+        ];
     }
+    bridge206ExcelTable('신고 관리', ['번호', '대상', '대상 번호', '대상 내용', '신고자', '상태', '사유', '처리 메모', '접수일'], $reportRows ?: [['-', '-', '-', '신고 기록 없음', '-', '-', '-', '-', '기록 없음']], [70, 90, 90, 320, 120, 100, 220, 220, 150]);
 
-    fclose($out);
+    bridge206ExcelEnd();
     exit;
 }
 
@@ -814,7 +813,7 @@ require_once __DIR__ . '/../app/header.php';
       <a class="<?= $summaryPeriod === '30' ? 'is-active' : '' ?>" href="admin.php?period=30">최근 30일</a>
       <a class="<?= $summaryPeriod === 'all' ? 'is-active' : '' ?>" href="admin.php?period=all">전체 기간</a>
       <?php $exportQuery = $_GET; $exportQuery['export'] = 'admin'; ?>
-      <a class="admin-period__download" href="admin.php?<?= htmlspecialchars(http_build_query($exportQuery)) ?>">CSV 다운로드</a>
+      <a class="admin-period__download" href="admin.php?<?= htmlspecialchars(http_build_query($exportQuery)) ?>">엑셀 다운로드</a>
     </nav>
   </div>
 

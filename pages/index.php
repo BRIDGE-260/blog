@@ -277,7 +277,7 @@ if (!$ajax) {
     <h2 class="sec-title">인기 태그</h2>
     <div class="tagcloud__chips">
       <?php foreach ($popularTags as $t): ?>
-        <a class="chip <?= $tagId === (int)$t['id'] ? 'on' : '' ?>" href="index.php?tag=<?= (int)$t['id'] ?>">
+        <a class="chip <?= $tagId === (int)$t['id'] ? 'on' : '' ?>" href="index.php?tag=<?= (int)$t['id'] ?>" aria-current="<?= $tagId === (int)$t['id'] ? 'true' : 'false' ?>">
           #<?= htmlspecialchars($t['name']) ?>
         </a>
       <?php endforeach; ?>
@@ -293,9 +293,9 @@ if (!$ajax) {
     <strong>세대가 함께 읽는 이야기</strong>
   </div>
   <nav class="cat-tabs">
-    <a class="<?= $cat === '' ? 'on' : '' ?>" href="index.php">전체</a>
+    <a class="<?= ($cat === '' && $tagId <= 0) ? 'on' : '' ?>" href="index.php" aria-current="<?= ($cat === '' && $tagId <= 0) ? 'true' : 'false' ?>">전체</a>
     <?php foreach ($FIXED_CATEGORIES as $cn): ?>
-      <a class="<?= $cat === $cn ? 'on' : '' ?>" href="index.php?cat=<?= urlencode($cn) ?>"><?= htmlspecialchars($cn) ?></a>
+      <a class="<?= $cat === $cn ? 'on' : '' ?>" href="index.php?cat=<?= urlencode($cn) ?>" aria-current="<?= $cat === $cn ? 'true' : 'false' ?>"><?= htmlspecialchars($cn) ?></a>
     <?php endforeach; ?>
   </nav>
 </section>
@@ -395,19 +395,38 @@ if (!$ajax) {
   function load(url, push) {
     const u = new URL(url, location.href);
     u.searchParams.set('ajax', '1');
-    fetch(u).then(r => r.text()).then(function (html) {
+    zone.classList.add('is-loading');
+    fetch(u).then(function (r) {
+      if (!r.ok) throw new Error('feed load failed');
+      return r.text();
+    }).then(function (html) {
       zone.innerHTML = html;
       const cat = new URL(url, location.href).searchParams.get('cat') || '';
+      const tag = new URL(url, location.href).searchParams.get('tag') || '';
       document.querySelectorAll('.cat-tabs a').forEach(function (a) {
         const ac = new URL(a.href, location.href).searchParams.get('cat') || '';
-        a.classList.toggle('on', ac === cat);
+        a.classList.toggle('on', tag === '' && ac === cat);
+        a.setAttribute('aria-current', tag === '' && ac === cat ? 'true' : 'false');
+      });
+      document.querySelectorAll('.tagcloud__chips .chip').forEach(function (a) {
+        const chipTag = new URL(a.href, location.href).searchParams.get('tag') || '';
+        a.classList.toggle('on', tag !== '' && chipTag === tag);
+        a.setAttribute('aria-current', tag !== '' && chipTag === tag ? 'true' : 'false');
       });
       if (push) history.pushState(null, '', url);
+    }).catch(function () {
+      location.href = url;
+    }).finally(function () {
+      zone.classList.remove('is-loading');
     });
   }
 
   // 카테고리 탭(피드 영역 바깥)
   document.querySelectorAll('.cat-tabs a').forEach(function (a) {
+    a.addEventListener('click', function (e) { e.preventDefault(); load(a.getAttribute('href'), true); });
+  });
+  // 인기 태그도 같은 AJAX 흐름으로 피드만 교체한다.
+  document.querySelectorAll('.tagcloud__chips .chip').forEach(function (a) {
     a.addEventListener('click', function (e) { e.preventDefault(); load(a.getAttribute('href'), true); });
   });
   // 피드 영역 안의 index.php 링크(정렬·페이징·필터해제)만 위임 처리. 글 카드(view.php)는 그냥 이동.

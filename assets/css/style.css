@@ -811,6 +811,15 @@ html[data-theme="dark"] .site-logo--dark {
   font-size: 13px;
 }
 
+#feedZone {
+  transition: opacity 0.16s ease;
+}
+
+#feedZone.is-loading {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 /* ── 피드 헤더 + 검색 ─────────────────── */
 .feed-head {
   display: flex;
