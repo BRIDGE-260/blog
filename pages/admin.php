@@ -11,6 +11,7 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/points.php';
 
 $adminColumnResult = $conn->query("SHOW COLUMNS FROM users LIKE 'is_admin'");
 if (!$adminColumnResult || $adminColumnResult->num_rows === 0) {
@@ -133,6 +134,9 @@ $hasModerationLogs = adminTableExists($conn, 'moderation_logs');
 $hasBanColumn = adminColumnExists($conn, 'users', 'is_banned');
 $hasReports = adminTableExists($conn, 'reports');
 $hasCommentLikes = adminTableExists($conn, 'comment_likes');
+$hasPoints = adminTableExists($conn, 'point_wallets') && adminTableExists($conn, 'point_transactions');
+$hasRoulette = adminTableExists($conn, 'roulette_spins');
+$hasAiLogs = adminTableExists($conn, 'ai_assist_logs');
 $isAjaxRequest = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'fetch';
 $summaryPeriod = $_GET['period'] ?? '30';
 if (!in_array($summaryPeriod, ['7', '30', 'all'], true)) {
@@ -159,7 +163,27 @@ function adminPeriodAnd(string $column, int $periodDays): string {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $adminAction = $_POST['admin_action'] ?? '';
 
-    if ($adminAction === 'user_role') {
+    if ($adminAction === 'point_adjust' && $hasPoints) {
+        $targetId = (int)($_POST['user_id'] ?? 0);
+        $amount = (int)($_POST['amount'] ?? 0);
+        $reason = mb_substr(trim($_POST['reason'] ?? ''), 0, 120);
+        $userExists = $targetId > 0 ? adminCount($conn, "SELECT COUNT(*) AS cnt FROM users WHERE id = ?", 'i', [$targetId]) > 0 : false;
+        if (!$userExists) {
+            $adminMessage = '회원을 찾을 수 없어요.';
+        } elseif ($amount === 0 || abs($amount) > 10000) {
+            $adminMessage = '한 번에 1~10,000포인트만 지급하거나 차감할 수 있어요.';
+        } elseif ($reason === '') {
+            $adminMessage = '포인트 조정 사유를 입력해주세요.';
+        } else {
+            $refKey = 'admin-' . $adminId . '-' . bin2hex(random_bytes(8));
+            $description = '관리자 조정: ' . $reason;
+            $result = bridge_admin_adjust_points($conn, $targetId, $amount, $refKey, $description);
+            $adminMessage = $result['message'];
+            if ($result['ok']) {
+                adminLogAction($conn, $hasModerationLogs, $adminId, 'user', $targetId, 'adjust_points', $amount . 'P · ' . $reason);
+            }
+        }
+    } elseif ($adminAction === 'user_role') {
         $targetId = (int)($_POST['user_id'] ?? 0);
         $isAdmin = isset($_POST['is_admin']) ? 1 : 0;
         if ($targetId > 0) {
@@ -337,6 +361,10 @@ $summary = [
     'tags' => adminCount($conn, "SELECT COUNT(*) AS cnt FROM tags"),
     'today_visit' => adminCount($conn, "SELECT COALESCE(SUM(count), 0) AS cnt FROM visit_logs WHERE visit_date = CURDATE()"),
     'total_visit' => adminCount($conn, "SELECT COALESCE(SUM(count), 0) AS cnt FROM visit_logs" . adminPeriodWhere('visit_date', $periodDays)),
+    'point_balance' => $hasPoints ? adminCount($conn, "SELECT COALESCE(SUM(balance), 0) AS cnt FROM point_wallets") : 0,
+    'point_activity' => $hasPoints ? adminCount($conn, "SELECT COUNT(*) AS cnt FROM point_transactions" . adminPeriodWhere('created_at', $periodDays)) : 0,
+    'roulette_today' => $hasRoulette ? adminCount($conn, "SELECT COUNT(*) AS cnt FROM roulette_spins WHERE spin_date = CURDATE()") : 0,
+    'ai_activity' => $hasAiLogs ? adminCount($conn, "SELECT COUNT(*) AS cnt FROM ai_assist_logs" . adminPeriodWhere('created_at', $periodDays)) : 0,
 ];
 
 $userSearch = mb_substr(trim($_GET['user_q'] ?? ''), 0, 60);
@@ -384,9 +412,12 @@ if ($userState === 'admin') {
 } elseif ($userState === 'normal' && $hasBanColumn) {
     $userWhere[] = "is_banned = 0";
 }
+$pointBalanceSelect = $hasPoints
+    ? "COALESCE((SELECT pw.balance FROM point_wallets pw WHERE pw.user_id = users.id), 0) AS point_balance"
+    : "0 AS point_balance";
 $recentUsers = adminFetchAll(
     $conn,
-    "SELECT id, email, name, nickname, blog_title, is_admin, $banSelect, created_at
+    "SELECT id, email, name, nickname, blog_title, is_admin, $banSelect, $pointBalanceSelect, created_at
      FROM users
      WHERE " . implode(" AND ", $userWhere) . "
      ORDER BY created_at DESC, id DESC
@@ -475,6 +506,23 @@ $hotCommentPosts = adminFetchAll(
      LIMIT 5"
 );
 
+$recentPointTransactions = $hasPoints ? adminFetchAll(
+    $conn,
+    "SELECT pt.amount, pt.action_type, pt.description, pt.created_at, u.id AS user_id, u.nickname
+     FROM point_transactions pt
+     JOIN users u ON u.id = pt.user_id
+     ORDER BY pt.created_at DESC, pt.id DESC
+     LIMIT 8"
+) : [];
+$recentAiLogs = $hasAiLogs ? adminFetchAll(
+    $conn,
+    "SELECT al.assist_mode, al.used_api, al.created_at, u.id AS user_id, u.nickname
+     FROM ai_assist_logs al
+     JOIN users u ON u.id = al.user_id
+     ORDER BY al.created_at DESC, al.id DESC
+     LIMIT 8"
+) : [];
+
 $logActionLabels = [
     'grant_admin' => '관리자 권한 부여',
     'revoke_admin' => '관리자 권한 해제',
@@ -484,6 +532,7 @@ $logActionLabels = [
     'delete_post' => '글 강제 삭제',
     'delete_comment' => '댓글 삭제',
     'update_report_status' => '신고 상태 변경',
+    'adjust_points' => '포인트 조정',
 ];
 $logTargetLabels = ['user' => '회원', 'post' => '글', 'comment' => '댓글', 'report' => '신고'];
 $logFilter = $_GET['log_filter'] ?? 'all';
@@ -908,6 +957,30 @@ require_once __DIR__ . '/../app/header.php';
         </a>
       </div>
     </section>
+
+    <section class="admin-ops__group">
+      <div class="admin-ops__head">
+        <h2>확장 기능</h2>
+        <span>포인트 · AI</span>
+      </div>
+      <div class="admin-ops__list">
+        <a class="admin-ops__metric" href="#feature-activity">
+          <strong><?= number_format($summary['point_balance']) ?>P</strong>
+          <span>전체 보유 포인트</span>
+          <em><?= number_format($summary['point_activity']) ?>건의 변동</em>
+        </a>
+        <a class="admin-ops__metric" href="#feature-activity">
+          <strong><?= number_format($summary['roulette_today']) ?></strong>
+          <span>오늘 룰렛 참여</span>
+          <em>하루 한 번 참여</em>
+        </a>
+        <a class="admin-ops__metric" href="#feature-activity">
+          <strong><?= number_format($summary['ai_activity']) ?></strong>
+          <span>AI 글쓰기 이용</span>
+          <em><?= htmlspecialchars($periodLabel) ?> 기준</em>
+        </a>
+      </div>
+    </section>
   </div>
 
   <section class="admin-checklist" aria-label="오늘 운영 체크리스트">
@@ -926,6 +999,45 @@ require_once __DIR__ . '/../app/header.php';
   </section>
 
   <div class="admin-grid">
+    <section class="admin-panel admin-panel--wide" id="feature-activity">
+      <div class="admin-panel__head">
+        <h2>포인트 · AI 운영 현황</h2>
+        <span>최근 이용 기록</span>
+      </div>
+      <?php if (!$hasPoints && !$hasAiLogs): ?>
+        <p class="admin-empty">포인트와 AI 마이그레이션을 실행하면 이용 현황이 표시됩니다.</p>
+      <?php else: ?>
+        <div class="admin-feature-feed">
+          <div>
+            <h3>포인트 변동</h3>
+            <div class="admin-list">
+              <?php foreach ($recentPointTransactions as $transaction): ?>
+                <a class="admin-list__item" href="blog.php?id=<?= (int)$transaction['user_id'] ?>">
+                  <span><b><?= htmlspecialchars($transaction['nickname']) ?></b> · <?= htmlspecialchars($transaction['description']) ?></span>
+                  <strong class="<?= (int)$transaction['amount'] < 0 ? 'is-minus' : 'is-plus' ?>"><?= (int)$transaction['amount'] > 0 ? '+' : '' ?><?= number_format((int)$transaction['amount']) ?>P</strong>
+                  <small><?= date('m.d H:i', strtotime($transaction['created_at'])) ?></small>
+                </a>
+              <?php endforeach; ?>
+              <?php if (!$recentPointTransactions): ?><p class="admin-empty">포인트 변동 기록이 없습니다.</p><?php endif; ?>
+            </div>
+          </div>
+          <div>
+            <h3>AI 글쓰기 이용</h3>
+            <div class="admin-list">
+              <?php foreach ($recentAiLogs as $aiLog): ?>
+                <a class="admin-list__item" href="blog.php?id=<?= (int)$aiLog['user_id'] ?>">
+                  <span><b><?= htmlspecialchars($aiLog['nickname']) ?></b> · <?= htmlspecialchars($aiLog['assist_mode']) ?></span>
+                  <strong><?= (int)$aiLog['used_api'] === 1 ? 'OpenAI' : '로컬 도우미' ?></strong>
+                  <small><?= date('m.d H:i', strtotime($aiLog['created_at'])) ?></small>
+                </a>
+              <?php endforeach; ?>
+              <?php if (!$recentAiLogs): ?><p class="admin-empty">AI 이용 기록이 없습니다.</p><?php endif; ?>
+            </div>
+          </div>
+        </div>
+      <?php endif; ?>
+    </section>
+
     <section class="admin-panel admin-panel--wide" id="site-settings">
       <div class="admin-panel__head">
         <h2>사이트 구조 설정</h2>
@@ -989,6 +1101,7 @@ require_once __DIR__ . '/../app/header.php';
               <th>이메일</th>
               <th>블로그</th>
               <th>가입일</th>
+              <th>포인트</th>
               <th>상태</th>
               <th>권한</th>
               <th>밴</th>
@@ -1003,6 +1116,18 @@ require_once __DIR__ . '/../app/header.php';
                 <td><?= htmlspecialchars($u['email']) ?></td>
                 <td><?= htmlspecialchars($u['blog_title'] ?: $u['nickname'] . '의 블로그') ?></td>
                 <td><?= date('Y.m.d H:i', strtotime($u['created_at'])) ?></td>
+                <td>
+                  <strong class="admin-point-balance"><?= number_format((int)$u['point_balance']) ?>P</strong>
+                  <?php if ($hasPoints): ?>
+                    <form class="admin-point-form" method="post" action="admin.php#users">
+                      <input type="hidden" name="admin_action" value="point_adjust">
+                      <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
+                      <input type="number" name="amount" min="-10000" max="10000" step="1" placeholder="±P" required aria-label="지급 또는 차감 포인트">
+                      <input type="text" name="reason" maxlength="120" placeholder="조정 사유" required aria-label="포인트 조정 사유">
+                      <button type="submit">조정</button>
+                    </form>
+                  <?php endif; ?>
+                </td>
                 <td data-user-status>
                   <?php if ((int)$u['is_banned'] === 1): ?>
                     <span class="admin-badge admin-badge--danger">밴</span>
@@ -1037,7 +1162,7 @@ require_once __DIR__ . '/../app/header.php';
               </tr>
             <?php endforeach; ?>
             <?php if (!$recentUsers): ?>
-              <tr><td colspan="9" class="admin-empty">회원이 없습니다.</td></tr>
+              <tr><td colspan="10" class="admin-empty">회원이 없습니다.</td></tr>
             <?php endif; ?>
           </tbody>
         </table>

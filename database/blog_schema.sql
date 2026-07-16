@@ -321,6 +321,7 @@ CREATE TABLE `posts` (
   `category_id` int(11) DEFAULT NULL COMMENT '글이 속한 카테고리',
   `title` varchar(200) NOT NULL COMMENT '글 제목',
   `content` text NOT NULL COMMENT '글 본문 (HTML)',
+  `location_name` varchar(120) DEFAULT NULL COMMENT '글과 관련된 장소명',
   `thumbnail_original` varchar(255) DEFAULT NULL COMMENT '썸네일 원본 파일명',
   `thumbnail_stored` varchar(255) DEFAULT NULL COMMENT '썸네일 저장 파일명(변환됨)',
   `view_count` int(11) NOT NULL DEFAULT 0 COMMENT '조회수',
@@ -464,6 +465,65 @@ CREATE TABLE `site_settings` (
   PRIMARY KEY (`setting_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
+
+-- 포인트 지갑, 적립/사용 내역, 일일 룰렛
+DROP TABLE IF EXISTS `user_point_badges`;
+DROP TABLE IF EXISTS `roulette_spins`;
+DROP TABLE IF EXISTS `point_transactions`;
+DROP TABLE IF EXISTS `point_wallets`;
+CREATE TABLE `point_wallets` (
+  `user_id` int(11) NOT NULL,
+  `balance` int(11) NOT NULL DEFAULT 0,
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`user_id`),
+  CONSTRAINT `fk_point_wallet_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE `point_transactions` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `user_id` int(11) NOT NULL,
+  `amount` int(11) NOT NULL,
+  `action_type` varchar(30) NOT NULL,
+  `ref_key` varchar(100) NOT NULL,
+  `description` varchar(150) NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_point_action` (`user_id`,`action_type`,`ref_key`),
+  KEY `idx_point_user_created` (`user_id`,`created_at`),
+  CONSTRAINT `fk_point_transaction_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE `roulette_spins` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `user_id` int(11) NOT NULL,
+  `spin_date` date NOT NULL,
+  `reward` int(11) NOT NULL DEFAULT 0,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_roulette_daily` (`user_id`,`spin_date`),
+  CONSTRAINT `fk_roulette_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE `user_point_badges` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `user_id` int(11) NOT NULL,
+  `badge_code` varchar(30) NOT NULL,
+  `is_equipped` tinyint(1) NOT NULL DEFAULT 0,
+  `purchased_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_user_point_badge` (`user_id`,`badge_code`),
+  KEY `idx_user_badge_equipped` (`user_id`,`is_equipped`),
+  CONSTRAINT `fk_user_point_badge_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS `ai_assist_logs`;
+CREATE TABLE `ai_assist_logs` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `user_id` int(11) NOT NULL,
+  `assist_mode` varchar(20) NOT NULL,
+  `input_excerpt` varchar(500) NOT NULL,
+  `used_api` tinyint(1) NOT NULL DEFAULT 0,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_ai_assist_user_created` (`user_id`,`created_at`),
+  CONSTRAINT `fk_ai_assist_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;

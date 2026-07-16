@@ -14,6 +14,7 @@ if (!isset($_SESSION['user_id'])) {        // 로그인 검사 먼저 (header �
 require_once __DIR__ . '/../app/db.php';
 require_once __DIR__ . '/../app/categories.php';
 require_once __DIR__ . '/../app/media.php';
+require_once __DIR__ . '/../app/points.php';
 
 $userId = $_SESSION['user_id'];
 $error  = '';
@@ -24,6 +25,7 @@ $content    = '';
 $category   = '';
 $visibility = 'all';
 $tagInput   = '';
+$locationName = '';
 $isPinned   = 0;
 
 // ============================================================
@@ -35,6 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $category   = $_POST['category']     ?? '';      // 고정 목록의 카테고리 이름('' = 선택 안 함)
     $visibility = $_POST['visibility']   ?? 'all';
     $tagInput   = trim($_POST['tags']    ?? '');
+    $locationName = mb_substr(trim($_POST['location_name'] ?? ''), 0, 120, 'UTF-8');
     $status     = ($_POST['status'] ?? 'published') === 'draft' ? 'draft' : 'published';
     $isPinned   = isset($_POST['is_pinned']) ? 1 : 0;
 
@@ -55,12 +58,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $stmt = $conn->prepare(
             "INSERT INTO posts
-               (user_id, category_id, title, content, visibility, status, is_pinned)
-             VALUES (?, ?, ?, ?, ?, ?, ?)"
+               (user_id, category_id, title, content, location_name, visibility, status, is_pinned)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         );
         $stmt->bind_param(
-            "iissssi",
-            $userId, $catParam, $title, $content, $visibility, $status, $isPinned
+            "iisssssi",
+            $userId, $catParam, $title, $content, $locationName, $visibility, $status, $isPinned
         );
         $stmt->execute();
         $postId = $conn->insert_id;
@@ -107,6 +110,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->bind_param("si", $newContent, $postId);
                 $stmt->execute(); $stmt->close();
             }
+        }
+
+        if ($status === 'published') {
+            bridge_add_points($conn, $userId, 10, 'publish_post', (string)$postId, '글 발행');
         }
 
         // 임시저장이면 내 블로그 임시저장 탭으로, 발행이면 그 글로 이동
@@ -179,6 +186,24 @@ $bridgeQuestions = [
       </div>
     </section>
 
+    <section class="ai-write" aria-label="BRIDGE 206 AI 글쓰기 도우미" data-ai-write>
+      <div class="ai-write__intro">
+        <span>BRIDGE AI</span>
+        <h2>생각의 첫 문장을 같이 찾아볼까요?</h2>
+        <p>쓰고 싶은 내용을 짧게 적으면 제목, 글의 흐름, 태그를 제안합니다.</p>
+      </div>
+      <div class="ai-write__workspace">
+        <textarea data-ai-topic rows="3" maxlength="2000" placeholder="예: 오랜만에 아버지와 LP를 들으며 세대마다 음악을 듣는 방식이 다르다는 생각이 들었다."></textarea>
+        <div class="ai-write__actions">
+          <button type="button" data-ai-mode="title">제목 추천</button>
+          <button type="button" data-ai-mode="outline">글 개요</button>
+          <button type="button" data-ai-mode="tags">태그 추천</button>
+        </div>
+        <p class="ai-write__status" data-ai-status aria-live="polite">추천 결과를 누르면 글에 바로 적용됩니다.</p>
+        <div class="ai-write__results" data-ai-results></div>
+      </div>
+    </section>
+
     <aside class="write-side-tools" aria-label="글쓰기 도구">
       <button type="button" data-tool-target="images" title="사진/동영상 첨부">▧</button>
       <button type="button" data-tool-target="prompts" title="글감 질문">?</button>
@@ -229,6 +254,11 @@ $bridgeQuestions = [
       </div>
     </div>
 
+    <label class="wf-field">
+      <span>장소</span>
+      <input type="text" name="location_name" maxlength="120" value="<?= htmlspecialchars($locationName) ?>" placeholder="예: 서울숲, 부산 해운대">
+    </label>
+
     <label class="wf-field" data-write-block="images">
       <span>본문 첨부 (사진/동영상 선택 → 아래 미리보기를 본문으로 드래그하면 그 자리에 들어갑니다 · 안 넣은 파일은 저장 안 됨)</span>
       <small class="wf-hint">여러 장을 한 번에 고르려면 파일 선택 창에서 Ctrl 또는 Shift를 누른 채 선택하세요.</small>
@@ -240,8 +270,9 @@ $bridgeQuestions = [
   </form>
 </section>
 
-<script src="../assets/js/taginput.js?v=20260619c"></script>
+<script src="../assets/js/taginput.js?v=20260716ai"></script>
 <script src="../assets/js/imageinsert.js?v=20260702a"></script>
+<script src="../assets/js/aiwrite.js?v=20260716a"></script>
 <script>
 (function () {
   var editor = document.getElementById('editor');

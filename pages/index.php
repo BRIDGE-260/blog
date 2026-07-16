@@ -17,21 +17,6 @@ $sort     = ($_GET['sort'] ?? 'latest') === 'popular' ? 'popular' : 'latest';
 $perPage  = 6;
 $page     = max(1, (int)($_GET['page'] ?? 1));
 $ajax     = isset($_GET['ajax']);   // 카테고리/정렬/검색 클릭 시 피드만 교체(AJAX)
-$mainFeatureTitle = '20대와 60대에서 시작해, 모든 세대를 잇는 블로그';
-$mainFeatureText = '읽기 편한 글자 크기와 세대가 함께 나눌 수 있는 이야기로 서로의 일상을 연결합니다.';
-$siteSettingsResult = $conn->query("SHOW TABLES LIKE 'site_settings'");
-if ($siteSettingsResult && $siteSettingsResult->num_rows > 0) {
-    $settingsRows = $conn->query("SELECT setting_key, setting_value FROM site_settings WHERE setting_key IN ('main_feature_title', 'main_feature_text')");
-    if ($settingsRows) {
-        foreach ($settingsRows->fetch_all(MYSQLI_ASSOC) as $settingRow) {
-            if ($settingRow['setting_key'] === 'main_feature_title' && trim((string)$settingRow['setting_value']) !== '') {
-                $mainFeatureTitle = $settingRow['setting_value'];
-            } elseif ($settingRow['setting_key'] === 'main_feature_text' && trim((string)$settingRow['setting_value']) !== '') {
-                $mainFeatureText = $settingRow['setting_value'];
-            }
-        }
-    }
-}
 
 // ── ① 이웃 새 글 (내가 이웃 추가한 사람들의 최신 글) ──
 $stmt = $conn->prepare(
@@ -48,17 +33,6 @@ $stmt->execute();
 $neighborPosts = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
-// ── 인기글 (공개글 중 공감 많은 순 Top 6) ──
-$popularPosts = $conn->query(
-    "SELECT p.id, p.title, p.view_count, u.nickname,
-            (SELECT COUNT(*) FROM likes l WHERE l.post_id = p.id) AS like_count
-     FROM posts p
-     JOIN users u ON u.id = p.user_id
-     WHERE p.status = 'published' AND p.visibility = 'all'
-     ORDER BY like_count DESC, p.view_count DESC, p.created_at DESC
-     LIMIT 6"
-)->fetch_all(MYSQLI_ASSOC);
-
 // ── ② 인기 태그 (공개글에 많이 쓰인 태그 Top 10) ──
 $popularTags = $conn->query(
     "SELECT t.id, t.name, COUNT(*) AS cnt
@@ -67,6 +41,18 @@ $popularTags = $conn->query(
      JOIN posts p ON p.id = pt.post_id AND p.status='published' AND p.visibility='all'
      GROUP BY t.id HAVING cnt >= 2 ORDER BY cnt DESC, t.name ASC LIMIT 10"
 )->fetch_all(MYSQLI_ASSOC);
+
+// 메인 첫인상을 만드는 대표 글: 이미지가 있는 최신 공개 글을 우선한다.
+$hero = $conn->query(
+    "SELECT p.id, p.title, p.content, p.created_at, u.nickname,
+            COALESCE((SELECT pi.stored FROM post_images pi WHERE pi.post_id = p.id AND pi.media_type = 'image' ORDER BY pi.sort_order, pi.id LIMIT 1), p.thumbnail_stored) AS thumbnail_stored
+     FROM posts p
+     JOIN users u ON u.id = p.user_id
+     WHERE p.status = 'published' AND p.visibility = 'all'
+     ORDER BY (COALESCE((SELECT pi.stored FROM post_images pi WHERE pi.post_id = p.id AND pi.media_type = 'image' ORDER BY pi.sort_order, pi.id LIMIT 1), p.thumbnail_stored) IS NOT NULL) DESC,
+              p.created_at DESC
+     LIMIT 1"
+)->fetch_assoc();
 
 // ── ③ 메인 피드 조건 (검색 + 태그 필터) ──
 $join   = '';
@@ -164,16 +150,6 @@ function feedUrl(array $override, $q, $sort, $tagId, $cat, $page) {
     return 'index.php?' . http_build_query($qs);
 }
 
-// 히어로(대표글): 공개글 중 썸네일 있는 최신 글 우선, 없으면 그냥 최신
-$hero = $conn->query(
-    "SELECT p.id, p.title, u.nickname,
-            COALESCE((SELECT pi.stored FROM post_images pi WHERE pi.post_id = p.id AND pi.media_type = 'image' ORDER BY pi.sort_order, pi.id LIMIT 1), p.thumbnail_stored) AS thumbnail_stored
-     FROM posts p JOIN users u ON u.id = p.user_id
-     WHERE p.status = 'published' AND p.visibility = 'all'
-     ORDER BY (EXISTS(SELECT 1 FROM post_images pi WHERE pi.post_id = p.id AND pi.media_type = 'image') OR p.thumbnail_stored IS NOT NULL) DESC, p.created_at DESC
-     LIMIT 1"
-)->fetch_assoc();
-
 $isHome = !$ajax;   // 전체 페이지(헤더·히어로·위젯)는 일반 요청에서만. AJAX면 피드만 출력.
 
 if (!$ajax) {
@@ -182,52 +158,22 @@ if (!$ajax) {
 }
 ?>
 
-<!-- 대표글 히어로 (홈에서만) -->
 <?php if ($isHome && $hero): ?>
-  <a class="hero" href="view.php?id=<?= (int)$hero['id'] ?>"
-     <?php if (!empty($hero['thumbnail_stored'])): ?>style="background-image: url('../uploads/<?= htmlspecialchars($hero['thumbnail_stored']) ?>')"<?php endif; ?>>
-    <div class="hero__inner">
-      <span class="hero__badge">오늘의 블로그</span>
-      <h2 class="hero__title"><?= htmlspecialchars($hero['title']) ?></h2>
-      <span class="hero__nick"><?= htmlspecialchars($hero['nickname']) ?>님</span>
+  <section class="home-hero" aria-label="오늘의 추천 글">
+    <a class="home-hero__visual" href="view.php?id=<?= (int)$hero['id'] ?>"
+       <?php if (!empty($hero['thumbnail_stored'])): ?>style="background-image:url('../uploads/<?= htmlspecialchars($hero['thumbnail_stored']) ?>')"<?php endif; ?>>
+      <span>FEATURED STORY</span>
+    </a>
+    <div class="home-hero__story">
+      <span class="home-hero__eyebrow">BRIDGE 206 · 오늘의 이야기</span>
+      <h1><a href="view.php?id=<?= (int)$hero['id'] ?>"><?= htmlspecialchars($hero['title']) ?></a></h1>
+      <p><?= htmlspecialchars(mb_strimwidth(strip_tags(preg_replace('/\[\[(?:img|video):[^\]]+\]\]/', '', $hero['content'])), 0, 150, '…')) ?></p>
+      <div class="home-hero__meta">
+        <span><?= htmlspecialchars($hero['nickname']) ?>님</span>
+        <span><?= date('Y.m.d', strtotime($hero['created_at'])) ?></span>
+      </div>
+      <a class="home-hero__read" href="view.php?id=<?= (int)$hero['id'] ?>">이야기 읽기 <span>→</span></a>
     </div>
-  </a>
-<?php endif; ?>
-
-<?php if ($isHome): ?>
-  <section class="bridge-panel" aria-label="BRIDGE 206 소개">
-    <div>
-      <span class="bridge-panel__eyebrow">BRIDGE 206</span>
-      <h1><?= htmlspecialchars($mainFeatureTitle) ?></h1>
-      <p><?= htmlspecialchars($mainFeatureText) ?></p>
-    </div>
-    <div class="bridge-panel__question">
-      <span>오늘의 연결 질문</span>
-      <strong>다른 세대에게 가장 물어보고 싶은 것은 무엇인가요?</strong>
-    </div>
-    <div class="bridge-panel__features" aria-label="BRIDGE 206 특징" data-bridge-feature-tabs>
-      <a class="is-active" href="#bridge-feature-reading" data-feature-target="bridge-feature-reading">읽기 편한 글자 크기</a>
-      <a href="#bridge-feature-topics" data-feature-target="bridge-feature-topics">세대별 관심 주제</a>
-      <a href="#bridge-feature-question" data-feature-target="bridge-feature-question">함께 묻는 연결 질문</a>
-    </div>
-  </section>
-
-  <section class="bridge-feature-detail" aria-label="BRIDGE 206 기능 설명">
-    <article id="bridge-feature-reading" class="is-active" data-feature-panel>
-      <span>01</span>
-      <h2>읽기 편한 글자 크기</h2>
-      <p>보통, 크게, 가장 크게 중 선택하면 글자뿐 아니라 버튼, 입력창, 카드 간격까지 함께 커져서 어느 세대든 편하게 읽을 수 있어요.</p>
-    </article>
-    <article id="bridge-feature-topics" data-feature-panel>
-      <span>02</span>
-      <h2>세대별 관심 주제</h2>
-      <p>자동차, 영화, 취미, 어학처럼 세대마다 관심사가 다른 주제를 한곳에 모아 서로의 일상을 발견하도록 돕습니다.</p>
-    </article>
-    <article id="bridge-feature-question" data-feature-panel>
-      <span>03</span>
-      <h2>함께 묻는 연결 질문</h2>
-      <p>다른 세대에게 궁금한 질문을 먼저 보여주어 글쓰기와 댓글 대화가 자연스럽게 이어지도록 만든 장치입니다.</p>
-    </article>
   </section>
 <?php endif; ?>
 
@@ -251,46 +197,19 @@ if (!$ajax) {
   </section>
 <?php endif; ?>
 
-<!-- 인기글 -->
-<?php if ($isHome && $popularPosts): ?>
-  <section class="popular" id="popularPosts">
-    <h2 class="sec-title">인기글</h2>
-    <ol class="popular__list">
-      <?php foreach ($popularPosts as $i => $pp): ?>
-        <li>
-          <a href="view.php?id=<?= (int)$pp['id'] ?>">
-            <span class="popular__rank"><?= $i + 1 ?></span>
-            <span class="popular__body">
-              <span class="popular__title"><?= htmlspecialchars($pp['title']) ?></span>
-              <span class="popular__meta"><?= htmlspecialchars($pp['nickname']) ?>님 · ♥ <?= (int)$pp['like_count'] ?> · 조회 <?= (int)$pp['view_count'] ?></span>
-            </span>
-          </a>
-        </li>
-      <?php endforeach; ?>
-    </ol>
-  </section>
-<?php endif; ?>
-
-<!-- ② 인기 태그 -->
-<?php if ($isHome && $popularTags): ?>
-  <section class="tagcloud" id="popularTags">
-    <h2 class="sec-title">인기 태그</h2>
-    <div class="tagcloud__chips">
-      <?php foreach ($popularTags as $t): ?>
-        <a class="chip <?= $tagId === (int)$t['id'] ? 'on' : '' ?>" href="index.php?tag=<?= (int)$t['id'] ?>" aria-current="<?= $tagId === (int)$t['id'] ? 'true' : 'false' ?>">
-          #<?= htmlspecialchars($t['name']) ?>
-        </a>
-      <?php endforeach; ?>
-    </div>
-  </section>
-<?php endif; ?>
-
-<!-- 카테고리(주제) 탭 — 둘러보기 바로 위 -->
 <?php if ($isHome): ?>
-<section class="category-panel" id="categoryPanel" aria-label="관심 주제">
+  <section class="recent-viewed" data-recent-viewed hidden>
+    <h2 class="sec-title">최근 본 글</h2>
+    <div class="recent-viewed__list" data-recent-viewed-list></div>
+  </section>
+<?php endif; ?>
+
+<!-- 카테고리와 인기 태그를 한곳에서 고르는 탐색 필터 -->
+<?php if ($isHome): ?>
+<section class="category-panel" id="categoryPanel" aria-label="글 탐색 필터">
   <div class="category-panel__head">
-    <span>관심 주제</span>
-    <strong>세대가 함께 읽는 이야기</strong>
+    <span>주제와 태그</span>
+    <strong>관심 있는 이야기만 골라보세요</strong>
   </div>
   <nav class="cat-tabs">
     <a class="<?= ($cat === '' && $tagId <= 0) ? 'on' : '' ?>" href="index.php" aria-current="<?= ($cat === '' && $tagId <= 0) ? 'true' : 'false' ?>">전체</a>
@@ -298,6 +217,15 @@ if (!$ajax) {
       <a class="<?= $cat === $cn ? 'on' : '' ?>" href="index.php?cat=<?= urlencode($cn) ?>" aria-current="<?= $cat === $cn ? 'true' : 'false' ?>"><?= htmlspecialchars($cn) ?></a>
     <?php endforeach; ?>
   </nav>
+  <?php if ($popularTags): ?>
+    <div class="tagcloud__chips" aria-label="인기 태그">
+      <?php foreach ($popularTags as $t): ?>
+        <a class="chip <?= $tagId === (int)$t['id'] ? 'on' : '' ?>" href="index.php?tag=<?= (int)$t['id'] ?>" aria-current="<?= $tagId === (int)$t['id'] ? 'true' : 'false' ?>">
+          #<?= htmlspecialchars($t['name']) ?>
+        </a>
+      <?php endforeach; ?>
+    </div>
+  <?php endif; ?>
 </section>
 <?php endif; ?>
 
@@ -371,21 +299,22 @@ if (!$ajax) {
 
 <script>
 (function () {
-  const featureTabs = document.querySelector('[data-bridge-feature-tabs]');
-  if (featureTabs) {
-    featureTabs.addEventListener('click', function (event) {
-      const link = event.target.closest('[data-feature-target]');
-      if (!link) return;
-      event.preventDefault();
-
-      const targetId = link.getAttribute('data-feature-target');
-      document.querySelectorAll('[data-feature-target]').forEach(function (item) {
-        item.classList.toggle('is-active', item === link);
-      });
-      document.querySelectorAll('[data-feature-panel]').forEach(function (panel) {
-        panel.classList.toggle('is-active', panel.id === targetId);
-      });
+  const recentSection = document.querySelector('[data-recent-viewed]');
+  const recentList = document.querySelector('[data-recent-viewed-list]');
+  if (recentSection && recentList) {
+    let recentPosts = [];
+    try { recentPosts = JSON.parse(localStorage.getItem('bridge206RecentPosts') || '[]'); } catch (e) {}
+    recentPosts.slice(0, 5).forEach(function (post) {
+      const link = document.createElement('a');
+      link.href = 'view.php?id=' + encodeURIComponent(post.id);
+      const title = document.createElement('strong');
+      title.textContent = post.title;
+      const meta = document.createElement('span');
+      meta.textContent = post.nickname ? post.nickname + '님' : '최근 열람';
+      link.append(title, meta);
+      recentList.appendChild(link);
     });
+    recentSection.hidden = recentList.children.length === 0;
   }
 
   const zone = document.getElementById('feedZone');

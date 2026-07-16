@@ -99,9 +99,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($email === '' || $password === '') {
             $error = '이메일과 비밀번호를 입력해주세요.';
         } else {
-            $loginSql = $hasBanColumn
-                ? "SELECT id, password, nickname, is_banned, banned_reason FROM users WHERE email = ?"
-                : "SELECT id, password, nickname, 0 AS is_banned, NULL AS banned_reason FROM users WHERE email = ?";
+            $adminColumnResult = $conn->query("SHOW COLUMNS FROM users LIKE 'is_admin'");
+            $hasAdminColumn = $adminColumnResult && $adminColumnResult->num_rows > 0;
+            $loginSql = "SELECT id, password, nickname, "
+                . ($hasAdminColumn ? "is_admin" : "0 AS is_admin") . ", "
+                . ($hasBanColumn ? "is_banned, banned_reason" : "0 AS is_banned, NULL AS banned_reason")
+                . " FROM users WHERE email = ?";
             $stmt = $conn->prepare($loginSql);
             $stmt->bind_param("s", $email);
             $stmt->execute();
@@ -115,7 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['user_id']  = $user['id'];
                 $_SESSION['nickname'] = $user['nickname'];
                 $_SESSION['flash_toast'] = '다시 오신 걸 환영해요.';
-                header('Location: index.php');
+                header('Location: ' . ((int)($user['is_admin'] ?? 0) === 1 ? 'admin.php' : 'index.php'));
                 exit;
             } else {
                 $error = '이메일 또는 비밀번호가 올바르지 않습니다.';

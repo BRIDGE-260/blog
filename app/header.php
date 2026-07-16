@@ -45,6 +45,8 @@ $loginAvatar = null;
 $loginIsAdmin = false;
 $unreadNotifications = 0;
 $unreadMessages = 0;
+$loginPoints = null;
+$loginBadgeLabel = null;
 if (isset($_SESSION['user_id'])) {
     $adminColumnResult = $conn->query("SHOW COLUMNS FROM users LIKE 'is_admin'");
     $hasAdminColumn = $adminColumnResult && $adminColumnResult->num_rows > 0;
@@ -150,6 +152,23 @@ if (isset($_SESSION['user_id'])) {
         $unreadMessages = (int)($stmt->get_result()->fetch_assoc()['cnt'] ?? 0);
         $stmt->close();
     }
+    $pointTableResult = $conn->query("SHOW TABLES LIKE 'point_wallets'");
+    if ($pointTableResult && $pointTableResult->num_rows > 0) {
+        require_once __DIR__ . '/points.php';
+        bridge_daily_visit_points($conn, (int)$_SESSION['user_id']);
+        $loginPoints = bridge_point_balance($conn, (int)$_SESSION['user_id']);
+        $badgeTableResult = $conn->query("SHOW TABLES LIKE 'user_point_badges'");
+        if ($badgeTableResult && $badgeTableResult->num_rows > 0) {
+            $stmt = $conn->prepare("SELECT badge_code FROM user_point_badges WHERE user_id = ? AND is_equipped = 1 LIMIT 1");
+            $headerUserId = (int)$_SESSION['user_id'];
+            $stmt->bind_param("i", $headerUserId);
+            $stmt->execute();
+            $equippedCode = $stmt->get_result()->fetch_assoc()['badge_code'] ?? '';
+            $stmt->close();
+            $badgeMap = bridge_point_badges();
+            $loginBadgeLabel = $badgeMap[$equippedCode]['label'] ?? null;
+        }
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -168,7 +187,7 @@ if (isset($_SESSION['user_id'])) {
   document.documentElement.setAttribute('data-theme', theme);
 })();
 </script>
-<link rel="stylesheet" href="../assets/css/style.css?v=20260626logo">
+<link rel="stylesheet" href="../assets/css/style.css?v=20260716ai">
 </head>
 <body <?= $flashToast !== '' ? 'data-flash-toast="' . htmlspecialchars($flashToast, ENT_QUOTES) . '"' : '' ?>>
 
@@ -177,8 +196,7 @@ if (isset($_SESSION['user_id'])) {
     <img class="site-logo site-logo--light" src="../assets/images/bridge206-logo.png" alt="BRIDGE 206">
     <img class="site-logo site-logo--dark" src="../assets/images/bridge206-logo-white.png" alt="" aria-hidden="true">
   </a>
-  <?php if ($isIndexPage): ?>
-    <nav class="topbar__nav" aria-label="Main shortcuts">
+    <nav class="topbar__nav" aria-label="주요 메뉴">
       <?php if ($loginNickname): ?>
         <a href="write.php">글쓰기</a>
         <a href="neighbors.php">이웃</a>
@@ -204,11 +222,13 @@ if (isset($_SESSION['user_id'])) {
               <?php endif; ?>
             </span>
             <span><?= htmlspecialchars($loginNickname) ?>님</span>
+            <?php if ($loginBadgeLabel): ?><b class="topbar-point-badge"><?= htmlspecialchars($loginBadgeLabel) ?></b><?php endif; ?>
           </summary>
           <div class="topbar-profile__menu">
             <a href="blog.php?id=<?= (int)$_SESSION['user_id'] ?>">내 블로그</a>
             <a href="stats.php">블로그 현황</a>
             <a href="activity.php">내 활동</a>
+            <a href="points.php">포인트<?= $loginPoints !== null ? ' ' . number_format($loginPoints) . 'P' : '' ?></a>
             <a href="comments_manage.php">댓글 관리</a>
             <a href="messages.php">쪽지<?= $unreadMessages > 0 ? ' (' . ($unreadMessages > 99 ? '99+' : (int)$unreadMessages) . ')' : '' ?></a>
             <a href="scraps.php">스크랩</a>
@@ -223,7 +243,6 @@ if (isset($_SESSION['user_id'])) {
         <a href="auth.php">로그인</a>
       <?php endif; ?>
     </nav>
-  <?php endif; ?>
   <button class="topbar__toggle" type="button" aria-label="Open menu" aria-controls="sideMenu" aria-expanded="false" data-menu-open>
     <span></span>
     <span></span>
@@ -248,16 +267,9 @@ if (isset($_SESSION['user_id'])) {
     <?php if ($loginNickname): ?>
       <a href="write.php">글쓰기</a>
       <a href="blog.php?id=<?= (int)$_SESSION['user_id'] ?>">내 블로그</a>
-      <a href="stats.php">현황</a>
       <a href="activity.php">내 활동</a>
-      <a href="comments_manage.php">댓글</a>
+      <a href="points.php">포인트<?= $loginPoints !== null ? ' ' . number_format($loginPoints) . 'P' : '' ?></a>
       <a href="neighbors.php">이웃</a>
-      <a class="topbar__noti" href="messages.php">
-        쪽지
-        <?php if ($unreadMessages > 0): ?>
-          <span class="topbar__badge"><?= $unreadMessages > 99 ? '99+' : (int)$unreadMessages ?></span>
-        <?php endif; ?>
-      </a>
       <?php if ($loginIsAdmin): ?>
         <a href="admin.php">관리자</a>
       <?php endif; ?>
@@ -267,7 +279,6 @@ if (isset($_SESSION['user_id'])) {
           <span class="topbar__badge"><?= $unreadNotifications > 99 ? '99+' : (int)$unreadNotifications ?></span>
         <?php endif; ?>
       </a>
-      <a href="scraps.php">스크랩</a>
       <a class="topbar__me" href="profile.php">
         <span class="topbar__avatar">
           <?php if (!empty($loginAvatar)): ?>

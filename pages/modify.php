@@ -14,6 +14,7 @@ if (!isset($_SESSION['user_id'])) {
 require_once __DIR__ . '/../app/db.php';
 require_once __DIR__ . '/../app/categories.php';
 require_once __DIR__ . '/../app/media.php';
+require_once __DIR__ . '/../app/points.php';
 
 $userId = $_SESSION['user_id'];
 $postId = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
@@ -55,6 +56,7 @@ $stmt->execute();
 $tagNames = array_column($stmt->get_result()->fetch_all(MYSQLI_ASSOC), 'name');
 $stmt->close();
 $tagInput = $tagNames ? '#' . implode(' #', $tagNames) : '';
+$locationName = (string)($post['location_name'] ?? '');
 
 // 기존 본문 이미지 (편집기 초기 렌더용)
 $stmt = $conn->prepare("SELECT id, stored, media_type FROM post_images WHERE post_id = ? ORDER BY sort_order, id");
@@ -72,6 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $category   = $_POST['category']     ?? '';
     $visibility = $_POST['visibility']   ?? 'all';
     $tagInput   = trim($_POST['tags']    ?? '');
+    $locationName = mb_substr(trim($_POST['location_name'] ?? ''), 0, 120, 'UTF-8');
     $status     = ($_POST['status'] ?? 'published') === 'draft' ? 'draft' : 'published';
     $isPinned   = isset($_POST['is_pinned']) ? 1 : 0;
 
@@ -90,12 +93,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // 2) 글 UPDATE (썸네일 컬럼은 더 이상 안 씀)
         $stmt = $conn->prepare(
             "UPDATE posts
-               SET category_id = ?, title = ?, content = ?, visibility = ?, status = ?, is_pinned = ?, updated_at = NOW()
+               SET category_id = ?, title = ?, content = ?, location_name = ?, visibility = ?, status = ?, is_pinned = ?, updated_at = NOW()
              WHERE id = ? AND user_id = ?"
         );
-        $stmt->bind_param("issssiii", $catParam, $title, $content, $visibility, $status, $isPinned, $postId, $userId);
+        $stmt->bind_param("isssssiii", $catParam, $title, $content, $locationName, $visibility, $status, $isPinned, $postId, $userId);
         $stmt->execute();
         $stmt->close();
+
+        if ($status === 'published') {
+            bridge_add_points($conn, $userId, 10, 'publish_post', (string)$postId, '글 발행');
+        }
 
         // 3) 본문에 남은 이미지 id (등장 순서)
         preg_match_all('/\[\[(?:img|video):(\d+)/', $content, $rm);
@@ -264,13 +271,23 @@ require_once __DIR__ . '/../app/header.php';
 ?>
 
 <section class="write">
-  <h1>글 수정</h1>
+  <div class="write-top">
+    <a class="write-menu-btn" href="view.php?id=<?= (int)$postId ?>" aria-label="글로 돌아가기">←</a>
+    <div class="write-top__meta">
+      <strong>글 수정</strong>
+      <span>BRIDGE 206</span>
+    </div>
+    <div class="write-top__actions" aria-label="수정 저장 버튼">
+      <button type="submit" form="modifyForm" name="status" value="draft">임시저장</button>
+      <button type="submit" form="modifyForm" name="status" value="published">수정 완료</button>
+    </div>
+  </div>
 
   <?php if ($error): ?>
     <div class="form-error"><?= htmlspecialchars($error) ?></div>
   <?php endif; ?>
 
-  <form class="write-form" method="post" action="modify.php" enctype="multipart/form-data">
+  <form id="modifyForm" class="write-form write-form--editorial" method="post" action="modify.php" enctype="multipart/form-data">
     <input type="hidden" name="id" value="<?= (int)$postId ?>">
     <input class="wf-title" type="text" name="title" placeholder="제목"
            value="<?= htmlspecialchars($title) ?>" required>
@@ -303,6 +320,24 @@ require_once __DIR__ . '/../app/header.php';
       <span>내 블로그 글 목록 상단에 공지로 고정</span>
     </label>
 
+    <section class="ai-write" aria-label="BRIDGE 206 AI 글쓰기 도우미" data-ai-write>
+      <div class="ai-write__intro">
+        <span>BRIDGE AI</span>
+        <h2>기존 글을 더 선명하게 다듬어보세요.</h2>
+        <p>메모를 비워두면 현재 제목과 본문을 바탕으로 추천합니다.</p>
+      </div>
+      <div class="ai-write__workspace">
+        <textarea data-ai-topic rows="3" maxlength="2000" placeholder="바꾸고 싶은 방향이나 추가할 내용을 적어보세요."></textarea>
+        <div class="ai-write__actions">
+          <button type="button" data-ai-mode="title">제목 다시 추천</button>
+          <button type="button" data-ai-mode="outline">글 개요 보완</button>
+          <button type="button" data-ai-mode="tags">태그 추천</button>
+        </div>
+        <p class="ai-write__status" data-ai-status aria-live="polite">추천 결과를 누르면 현재 글에 적용됩니다.</p>
+        <div class="ai-write__results" data-ai-results></div>
+      </div>
+    </section>
+
     <div class="wf-content wf-editor" id="editor" contenteditable="true"
          data-placeholder="내용을 입력하세요. 아래에서 첨부파일을 고른 뒤 미리보기를 본문으로 드래그하면 그 자리에 들어갑니다."><?= buildEditorMediaHtml($content, $postImages) ?></div>
     <input type="hidden" name="content" id="contentField">
@@ -314,6 +349,11 @@ require_once __DIR__ . '/../app/header.php';
         <input type="hidden" name="tags" value="<?= htmlspecialchars($tagInput) ?>">
       </div>
     </div>
+
+    <label class="wf-field">
+      <span>장소</span>
+      <input type="text" name="location_name" maxlength="120" value="<?= htmlspecialchars($locationName) ?>" placeholder="예: 서울숲, 부산 해운대">
+    </label>
 
     <label class="wf-field">
       <span>본문 첨부 (사진/동영상 선택 → 아래 미리보기를 본문으로 드래그 · 본문에서 빼면 저장 시 삭제됨)</span>
@@ -330,8 +370,9 @@ require_once __DIR__ . '/../app/header.php';
   </form>
 </section>
 
-<script src="../assets/js/taginput.js?v=20260619c"></script>
+<script src="../assets/js/taginput.js?v=20260716ai"></script>
 <script src="../assets/js/imageinsert.js?v=20260702a"></script>
+<script src="../assets/js/aiwrite.js?v=20260716a"></script>
 
 <?php require_once __DIR__ . '/../app/footer.php'; ?>
 

@@ -42,6 +42,10 @@ document.querySelectorAll('.taginput').forEach(function (box) {
   field.addEventListener('blur', function () {
     if (field.value.trim()) { add(field.value); field.value = ''; }
   });
+  box.addEventListener('bridge:set-tags', function (event) {
+    const incoming = Array.isArray(event.detail) ? event.detail : [];
+    incoming.forEach(add);
+  });
 
   render();
 });

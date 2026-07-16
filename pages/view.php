@@ -7,6 +7,7 @@
 
 session_start();
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/points.php';
 
 $isLogin  = isset($_SESSION['user_id']);
 $viewerId = $_SESSION['user_id'] ?? 0;   // 게스트는 0 (작성/공감/댓글은 로그인 필요)
@@ -14,7 +15,8 @@ $postId   = (int)($_GET['id'] ?? 0);
 
 // 글 + 작성자 닉네임 + 카테고리명 조회
 $stmt = $conn->prepare(
-    "SELECT p.*, u.nickname, c.name AS category_name
+    "SELECT p.*, u.nickname, c.name AS category_name,
+            (SELECT upb.badge_code FROM user_point_badges upb WHERE upb.user_id = u.id AND upb.is_equipped = 1 LIMIT 1) AS badge_code
      FROM posts p
      JOIN users u ON u.id = p.user_id
      LEFT JOIN categories c ON c.id = p.category_id
@@ -86,11 +88,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canView && $isLogin) {
         if ($liked) {
             $stmt = $conn->prepare("DELETE FROM likes WHERE post_id = ? AND user_id = ?");
         } else {
-            $stmt = $conn->prepare("INSERT INTO likes (post_id, user_id) VALUES (?, ?)");
+            $stmt = $conn->prepare("INSERT IGNORE INTO likes (post_id, user_id) VALUES (?, ?)");
         }
         $stmt->bind_param("ii", $postId, $viewerId);
         $stmt->execute();
+        $likeChanged = $stmt->affected_rows === 1;
         $stmt->close();
+        if (!$liked && $likeChanged && (int)$post['user_id'] !== (int)$viewerId) {
+            bridge_add_points($conn, (int)$post['user_id'], 1, 'received_like', $postId . ':' . $viewerId, '내 글이 공감을 받음');
+        }
     }
 
     // 스크랩 토글: 이미 했으면 취소, 아니면 추가
@@ -132,7 +138,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canView && $isLogin) {
             $stmt = $conn->prepare("INSERT INTO comments (post_id, parent_id, user_id, content) VALUES (?, ?, ?, ?)");
             $stmt->bind_param("iiis", $postId, $parentParam, $viewerId, $content);
             $stmt->execute();
+            $commentId = $stmt->insert_id;
             $stmt->close();
+            bridge_add_points($conn, (int)$viewerId, 3, 'write_comment', (string)$commentId, '댓글 작성');
         }
     }
 
@@ -426,8 +434,14 @@ require_once __DIR__ . '/../app/header.php';
 
     <div class="post__meta">
       <a href="blog.php?id=<?= (int)$post['user_id'] ?>"><?= htmlspecialchars($post['nickname']) ?>님</a>
+      <?php $publicBadges = bridge_point_badges(); if (!empty($post['badge_code']) && isset($publicBadges[$post['badge_code']])): ?>
+        <span class="point-badge point-badge--<?= htmlspecialchars($post['badge_code']) ?>"><?= htmlspecialchars($publicBadges[$post['badge_code']]['label']) ?></span>
+      <?php endif; ?>
       <span><?= date('Y.m.d H:i', strtotime($post['created_at'])) ?> · 조회 <?= (int)$post['view_count'] ?></span>
     </div>
+    <?php if (trim((string)($post['location_name'] ?? '')) !== ''): ?>
+      <div class="post__location">장소 · <?= htmlspecialchars($post['location_name']) ?></div>
+    <?php endif; ?>
 
     <div class="post-reader" data-reader-tools>
       <div class="post-reader__progress" aria-hidden="true"><span data-read-progress></span></div>
@@ -503,6 +517,7 @@ require_once __DIR__ . '/../app/header.php';
         <a class="like-btn" href="auth.php">☆ 스크랩</a>
       <?php endif; ?>
       <button type="button" class="like-btn" id="copyLink">🔗 링크 복사</button>
+      <button type="button" class="like-btn" onclick="window.print()">PDF로 저장</button>
       <?php if ($isLogin && $hasReports && !$isOwner): ?>
         <form method="post" action="view.php?id=<?= (int)$post['id'] ?>" class="report-form report-form--post" data-confirm="이 글을 신고할까요?">
           <input type="hidden" name="action" value="report_post">
@@ -1059,6 +1074,21 @@ require_once __DIR__ . '/../app/header.php';
   </script>
 
 <?php endif; ?>
+
+<script>
+(function () {
+  const current = {
+    id: <?= (int)$post['id'] ?>,
+    title: <?= json_encode($post['title'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>,
+    nickname: <?= json_encode($post['nickname'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>
+  };
+  let recent = [];
+  try { recent = JSON.parse(localStorage.getItem('bridge206RecentPosts') || '[]'); } catch (e) {}
+  recent = recent.filter(function (item) { return Number(item.id) !== current.id; });
+  recent.unshift(current);
+  localStorage.setItem('bridge206RecentPosts', JSON.stringify(recent.slice(0, 10)));
+})();
+</script>
 
 <?php require_once __DIR__ . '/../app/footer.php'; ?>
 

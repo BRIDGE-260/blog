@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/points.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -157,7 +158,12 @@ if ($action === 'like') {
     }
     $stmt->bind_param("ii", $postId, $viewerId);
     $stmt->execute();
+    $changed = $stmt->affected_rows === 1;
     $stmt->close();
+
+    if (!$liked && $changed && (int)$post['user_id'] !== $viewerId) {
+        bridge_add_points($conn, (int)$post['user_id'], 1, 'received_like', $postId . ':' . $viewerId, '내 글이 공감을 받음');
+    }
 
     sendJson(['ok' => true, 'like' => getLikeState($conn, $postId, $viewerId)]);
 }
@@ -210,6 +216,8 @@ if ($action === 'comment') {
     $stmt->execute();
     $commentId = $stmt->insert_id;
     $stmt->close();
+
+    bridge_add_points($conn, $viewerId, 3, 'write_comment', (string)$commentId, '댓글 작성');
 
     sendJson([
         'ok' => true,

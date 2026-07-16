@@ -7,6 +7,7 @@
 
 session_start();
 require_once __DIR__ . '/../app/db.php';
+require_once __DIR__ . '/../app/points.php';
 
 $isLogin  = isset($_SESSION['user_id']);
 $viewerId = $_SESSION['user_id'] ?? 0;          // 게스트는 0
@@ -14,7 +15,9 @@ $ownerId  = (int)($_GET['id'] ?? $viewerId);    // id 없으면 내 블로그
 
 // 블로그 주인 정보
 $stmt = $conn->prepare(
-    "SELECT id, nickname, blog_title, intro, profile_image_stored, notifications_read_at FROM users WHERE id = ?"
+    "SELECT id, nickname, blog_title, intro, profile_image_stored, notifications_read_at,
+            (SELECT upb.badge_code FROM user_point_badges upb WHERE upb.user_id = users.id AND upb.is_equipped = 1 LIMIT 1) AS badge_code
+     FROM users WHERE id = ?"
 );
 $stmt->bind_param("i", $ownerId);
 $stmt->execute();
@@ -641,6 +644,9 @@ require_once __DIR__ . '/../app/header.php';
         </div>
         <div class="profile__title"><?= htmlspecialchars($owner['blog_title'] ?: $owner['nickname'] . '님의 블로그') ?></div>
         <div class="profile__nick"><?= htmlspecialchars($owner['nickname']) ?></div>
+        <?php $ownerBadges = bridge_point_badges(); if (!empty($owner['badge_code']) && isset($ownerBadges[$owner['badge_code']])): ?>
+          <span class="point-badge point-badge--<?= htmlspecialchars($owner['badge_code']) ?>"><?= htmlspecialchars($ownerBadges[$owner['badge_code']]['label']) ?></span>
+        <?php endif; ?>
         <?php if (!empty($owner['intro']) && (int)$blogSettings['show_intro'] === 1): ?>
           <p class="profile__intro"><?= nl2br(htmlspecialchars($owner['intro'])) ?></p>
         <?php endif; ?>
