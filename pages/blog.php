@@ -686,6 +686,43 @@ require_once __DIR__ . '/../app/header.php';
   <div class="<?= htmlspecialchars(implode(' ', $blogClasses)) ?>"
        style="<?= htmlspecialchars($blogStyle . $blogBgStyle, ENT_QUOTES) ?>">
   <main class="blog-main">
+    <section class="blog-profile-bar">
+      <div class="blog-profile-bar__avatar">
+        <?php if (!empty($owner['profile_image_stored'])): ?>
+          <img src="../uploads/<?= htmlspecialchars($owner['profile_image_stored']) ?>" alt="">
+        <?php else: ?>
+          <span><?= htmlspecialchars(mb_substr($owner['nickname'], 0, 1)) ?></span>
+        <?php endif; ?>
+      </div>
+      <div class="blog-profile-bar__info">
+        <strong><?= htmlspecialchars($owner['nickname']) ?></strong>
+        <?php if ((int)$blogSettings['show_visit_count'] === 1): ?><span>오늘 <?= $todayVisit ?> · 전체 <?= $totalVisit ?></span><?php endif; ?>
+      </div>
+      <div class="blog-profile-bar__actions">
+        <a href="guestbook.php?id=<?= $ownerId ?>">방명록</a>
+        <?php if ($isLogin && !$isOwner): ?>
+          <form method="post" action="blog.php?id=<?= $ownerId ?>">
+            <input type="hidden" name="action" value="neighbor">
+            <button type="submit"><?= $iAddedOwner ? '이웃 취소' : '이웃 추가' ?></button>
+          </form>
+        <?php endif; ?>
+        <?php if ($isOwner): ?>
+          <details class="blog-manage-menu">
+            <summary>블로그 관리</summary>
+            <nav>
+              <a href="write.php">새 글 쓰기</a>
+              <a href="<?= blogUrl(1, $ownerId, 0, 'draft') ?>">임시저장</a>
+              <a href="categories_manage.php">카테고리 관리</a>
+              <a href="blog_customize.php">블로그 꾸미기</a>
+              <a href="stats.php">블로그 현황</a>
+              <a href="comments_manage.php">댓글 관리</a>
+              <a href="activity.php">내 활동</a>
+            </nav>
+          </details>
+        <?php endif; ?>
+      </div>
+    </section>
+
     <section class="blog-cover">
       <?php if (!empty($blogSettings['header_image_stored'])): ?>
         <img src="../uploads/<?= htmlspecialchars($blogSettings['header_image_stored']) ?>" alt="">
@@ -700,6 +737,13 @@ require_once __DIR__ . '/../app/header.php';
         <?php endif; ?>
       </div>
     </section>
+
+    <nav class="blog-category-tabs" aria-label="블로그 카테고리">
+      <a class="<?= $cat === 0 ? 'on' : '' ?>" href="blog.php?id=<?= $ownerId ?>">전체</a>
+      <?php foreach ($categories as $c): ?>
+        <a class="<?= $cat === (int)$c['id'] ? 'on' : '' ?>" href="blog.php?id=<?= $ownerId ?>&cat=<?= (int)$c['id'] ?>"><?= htmlspecialchars($c['name']) ?></a>
+      <?php endforeach; ?>
+    </nav>
 
     <section class="blog-searchbar" aria-label="블로그 글 검색">
       <form method="get" action="blog.php">

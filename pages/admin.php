@@ -59,6 +59,11 @@ function adminCount(mysqli $conn, string $sql, string $types = '', array $params
     return (int)($row['cnt'] ?? 0);
 }
 
+function adminSearchExcerpt(?string $text, int $width = 110): string {
+    $plain = trim(preg_replace('/\s+/u', ' ', strip_tags((string)$text)));
+    return $plain === '' ? '' : mb_strimwidth($plain, 0, $width, '...');
+}
+
 function adminTableExists(mysqli $conn, string $table): bool {
     $stmt = $conn->prepare(
         "SELECT COUNT(*) AS cnt
@@ -383,6 +388,302 @@ if (!in_array($postVisibilityFilter, ['any', 'all', 'neighbor', 'private'], true
     $postVisibilityFilter = 'any';
 }
 
+$globalSearch = mb_substr(trim($_GET['admin_q'] ?? ''), 0, 100);
+$globalScope = $_GET['admin_scope'] ?? 'all';
+$globalScopeLabels = [
+    'users' => ['회원·블로그'],
+    'posts' => ['게시글'],
+    'comments' => ['댓글'],
+    'guestbook' => ['방명록'],
+    'messages' => ['쪽지'],
+    'taxonomy' => ['카테고리', '태그'],
+    'reports' => ['신고'],
+    'logs' => ['운영 로그'],
+    'points' => ['포인트 내역'],
+    'ai' => ['AI 이용 기록'],
+    'settings' => ['사이트 설정'],
+];
+if ($globalScope !== 'all' && !isset($globalScopeLabels[$globalScope])) {
+    $globalScope = 'all';
+}
+$globalSearchGroups = [];
+$globalSearchTotal = 0;
+if ($globalSearch !== '') {
+    $globalLike = '%' . $globalSearch . '%';
+
+    $searchUsers = adminFetchAll(
+        $conn,
+        "SELECT id, email, name, nickname, blog_title, intro, created_at
+         FROM users
+         WHERE CAST(id AS CHAR) LIKE ? OR email LIKE ? OR name LIKE ? OR nickname LIKE ? OR blog_title LIKE ? OR intro LIKE ?
+         ORDER BY created_at DESC, id DESC LIMIT 8",
+        'ssssss',
+        [$globalLike, $globalLike, $globalLike, $globalLike, $globalLike, $globalLike]
+    );
+    $items = [];
+    foreach ($searchUsers as $row) {
+        $items[] = [
+            'title' => $row['nickname'] . ' · ' . $row['name'],
+            'description' => $row['blog_title'] ?: ($row['nickname'] . '의 블로그'),
+            'meta' => $row['email'] . ' · 회원 #' . $row['id'],
+            'url' => 'blog.php?id=' . (int)$row['id'],
+        ];
+    }
+    if ($items) $globalSearchGroups['회원·블로그'] = $items;
+
+    $searchPosts = adminFetchAll(
+        $conn,
+        "SELECT p.id, p.title, p.content, p.location_name, p.status, p.visibility, p.created_at,
+                u.nickname, c.name AS category_name
+         FROM posts p
+         JOIN users u ON u.id = p.user_id
+         LEFT JOIN categories c ON c.id = p.category_id
+         WHERE CAST(p.id AS CHAR) LIKE ? OR p.title LIKE ? OR p.content LIKE ? OR p.location_name LIKE ?
+            OR p.status LIKE ? OR p.visibility LIKE ? OR u.nickname LIKE ? OR c.name LIKE ?
+         ORDER BY p.created_at DESC, p.id DESC LIMIT 8",
+        'ssssssss',
+        [$globalLike, $globalLike, $globalLike, $globalLike, $globalLike, $globalLike, $globalLike, $globalLike]
+    );
+    $items = [];
+    foreach ($searchPosts as $row) {
+        $items[] = [
+            'title' => $row['title'],
+            'description' => adminSearchExcerpt($row['content']),
+            'meta' => $row['nickname'] . ' · ' . ($row['category_name'] ?: '카테고리 없음') . ' · ' . $row['status'] . '/' . $row['visibility'],
+            'url' => 'view.php?id=' . (int)$row['id'],
+        ];
+    }
+    if ($items) $globalSearchGroups['게시글'] = $items;
+
+    $searchComments = adminFetchAll(
+        $conn,
+        "SELECT c.id, c.post_id, c.content, c.created_at, u.nickname, p.title AS post_title
+         FROM comments c
+         JOIN users u ON u.id = c.user_id
+         JOIN posts p ON p.id = c.post_id
+         WHERE CAST(c.id AS CHAR) LIKE ? OR c.content LIKE ? OR u.nickname LIKE ? OR p.title LIKE ?
+         ORDER BY c.created_at DESC, c.id DESC LIMIT 8",
+        'ssss',
+        [$globalLike, $globalLike, $globalLike, $globalLike]
+    );
+    $items = [];
+    foreach ($searchComments as $row) {
+        $items[] = [
+            'title' => $row['nickname'] . '의 댓글',
+            'description' => adminSearchExcerpt($row['content']),
+            'meta' => $row['post_title'] . ' · 댓글 #' . $row['id'],
+            'url' => 'view.php?id=' . (int)$row['post_id'] . '#comment-' . (int)$row['id'],
+        ];
+    }
+    if ($items) $globalSearchGroups['댓글'] = $items;
+
+    $searchGuestbook = adminFetchAll(
+        $conn,
+        "SELECT g.id, g.owner_id, g.content, writer.nickname AS writer_nickname, owner.nickname AS owner_nickname
+         FROM guestbook g
+         JOIN users writer ON writer.id = g.user_id
+         JOIN users owner ON owner.id = g.owner_id
+         WHERE CAST(g.id AS CHAR) LIKE ? OR g.content LIKE ? OR writer.nickname LIKE ? OR owner.nickname LIKE ?
+         ORDER BY g.created_at DESC, g.id DESC LIMIT 8",
+        'ssss',
+        [$globalLike, $globalLike, $globalLike, $globalLike]
+    );
+    $items = [];
+    foreach ($searchGuestbook as $row) {
+        $items[] = [
+            'title' => $row['writer_nickname'] . ' → ' . $row['owner_nickname'],
+            'description' => adminSearchExcerpt($row['content']),
+            'meta' => '방명록 #' . $row['id'],
+            'url' => 'guestbook.php?id=' . (int)$row['owner_id'],
+        ];
+    }
+    if ($items) $globalSearchGroups['방명록'] = $items;
+
+    $searchMessages = adminFetchAll(
+        $conn,
+        "SELECT m.id, m.content, m.is_read, sender.id AS sender_id, sender.nickname AS sender_nickname,
+                receiver.nickname AS receiver_nickname
+         FROM messages m
+         JOIN users sender ON sender.id = m.sender_id
+         JOIN users receiver ON receiver.id = m.receiver_id
+         WHERE CAST(m.id AS CHAR) LIKE ? OR m.content LIKE ? OR sender.nickname LIKE ? OR receiver.nickname LIKE ?
+         ORDER BY m.created_at DESC, m.id DESC LIMIT 8",
+        'ssss',
+        [$globalLike, $globalLike, $globalLike, $globalLike]
+    );
+    $items = [];
+    foreach ($searchMessages as $row) {
+        $items[] = [
+            'title' => $row['sender_nickname'] . ' → ' . $row['receiver_nickname'],
+            'description' => adminSearchExcerpt($row['content']),
+            'meta' => '쪽지 #' . $row['id'] . ' · ' . ((int)$row['is_read'] === 1 ? '읽음' : '안 읽음'),
+            'url' => 'blog.php?id=' . (int)$row['sender_id'],
+        ];
+    }
+    if ($items) $globalSearchGroups['쪽지'] = $items;
+
+    $searchCategories = adminFetchAll(
+        $conn,
+        "SELECT c.id, c.user_id, c.name, u.nickname
+         FROM categories c JOIN users u ON u.id = c.user_id
+         WHERE CAST(c.id AS CHAR) LIKE ? OR c.name LIKE ? OR u.nickname LIKE ?
+         ORDER BY c.created_at DESC, c.id DESC LIMIT 8",
+        'sss',
+        [$globalLike, $globalLike, $globalLike]
+    );
+    $items = [];
+    foreach ($searchCategories as $row) {
+        $items[] = [
+            'title' => $row['name'],
+            'description' => $row['nickname'] . '의 카테고리',
+            'meta' => '카테고리 #' . $row['id'],
+            'url' => 'blog.php?id=' . (int)$row['user_id'] . '&cat=' . (int)$row['id'],
+        ];
+    }
+    if ($items) $globalSearchGroups['카테고리'] = $items;
+
+    $searchTags = adminFetchAll(
+        $conn,
+        "SELECT id, name, normalized_name FROM tags
+         WHERE CAST(id AS CHAR) LIKE ? OR name LIKE ? OR normalized_name LIKE ?
+         ORDER BY name LIMIT 8",
+        'sss',
+        [$globalLike, $globalLike, $globalLike]
+    );
+    $items = [];
+    foreach ($searchTags as $row) {
+        $items[] = [
+            'title' => '#' . $row['name'],
+            'description' => '연결된 게시글 보기',
+            'meta' => '태그 #' . $row['id'],
+            'url' => 'index.php?tag=' . (int)$row['id'],
+        ];
+    }
+    if ($items) $globalSearchGroups['태그'] = $items;
+
+    if ($hasReports) {
+        $searchReports = adminFetchAll(
+            $conn,
+            "SELECT r.id, r.target_type, r.target_id, r.reason, r.admin_note, r.status, u.nickname
+             FROM reports r JOIN users u ON u.id = r.reporter_id
+             WHERE CAST(r.id AS CHAR) LIKE ? OR r.target_type LIKE ? OR CAST(r.target_id AS CHAR) LIKE ?
+                OR r.reason LIKE ? OR r.admin_note LIKE ? OR r.status LIKE ? OR u.nickname LIKE ?
+             ORDER BY r.created_at DESC, r.id DESC LIMIT 8",
+            'sssssss',
+            [$globalLike, $globalLike, $globalLike, $globalLike, $globalLike, $globalLike, $globalLike]
+        );
+        $items = [];
+        foreach ($searchReports as $row) {
+            $items[] = [
+                'title' => '신고 #' . $row['id'] . ' · ' . $row['target_type'] . ' #' . $row['target_id'],
+                'description' => adminSearchExcerpt($row['reason']),
+                'meta' => $row['nickname'] . ' · ' . $row['status'],
+                'url' => '#reports',
+            ];
+        }
+        if ($items) $globalSearchGroups['신고'] = $items;
+    }
+
+    if ($hasModerationLogs) {
+        $searchLogs = adminFetchAll(
+            $conn,
+            "SELECT ml.id, ml.target_type, ml.target_id, ml.action, ml.reason, u.nickname
+             FROM moderation_logs ml JOIN users u ON u.id = ml.admin_id
+             WHERE CAST(ml.id AS CHAR) LIKE ? OR ml.target_type LIKE ? OR CAST(ml.target_id AS CHAR) LIKE ?
+                OR ml.action LIKE ? OR ml.reason LIKE ? OR u.nickname LIKE ?
+             ORDER BY ml.created_at DESC, ml.id DESC LIMIT 8",
+            'ssssss',
+            [$globalLike, $globalLike, $globalLike, $globalLike, $globalLike, $globalLike]
+        );
+        $items = [];
+        foreach ($searchLogs as $row) {
+            $items[] = [
+                'title' => $row['action'],
+                'description' => adminSearchExcerpt($row['reason']),
+                'meta' => $row['nickname'] . ' · ' . $row['target_type'] . ' #' . $row['target_id'],
+                'url' => '#logs',
+            ];
+        }
+        if ($items) $globalSearchGroups['운영 로그'] = $items;
+    }
+
+    if ($hasPoints) {
+        $searchPoints = adminFetchAll(
+            $conn,
+            "SELECT pt.id, pt.amount, pt.action_type, pt.description, u.id AS user_id, u.nickname
+             FROM point_transactions pt JOIN users u ON u.id = pt.user_id
+             WHERE CAST(pt.id AS CHAR) LIKE ? OR pt.action_type LIKE ? OR pt.description LIKE ? OR u.nickname LIKE ?
+             ORDER BY pt.created_at DESC, pt.id DESC LIMIT 8",
+            'ssss',
+            [$globalLike, $globalLike, $globalLike, $globalLike]
+        );
+        $items = [];
+        foreach ($searchPoints as $row) {
+            $items[] = [
+                'title' => $row['nickname'] . ' · ' . ((int)$row['amount'] > 0 ? '+' : '') . number_format((int)$row['amount']) . 'P',
+                'description' => $row['description'],
+                'meta' => $row['action_type'] . ' · 포인트 내역 #' . $row['id'],
+                'url' => 'blog.php?id=' . (int)$row['user_id'],
+            ];
+        }
+        if ($items) $globalSearchGroups['포인트 내역'] = $items;
+    }
+
+    if ($hasAiLogs) {
+        $searchAi = adminFetchAll(
+            $conn,
+            "SELECT al.id, al.assist_mode, al.input_excerpt, al.used_api, u.id AS user_id, u.nickname
+             FROM ai_assist_logs al JOIN users u ON u.id = al.user_id
+             WHERE CAST(al.id AS CHAR) LIKE ? OR al.assist_mode LIKE ? OR al.input_excerpt LIKE ? OR u.nickname LIKE ?
+             ORDER BY al.created_at DESC, al.id DESC LIMIT 8",
+            'ssss',
+            [$globalLike, $globalLike, $globalLike, $globalLike]
+        );
+        $items = [];
+        foreach ($searchAi as $row) {
+            $items[] = [
+                'title' => $row['nickname'] . ' · ' . $row['assist_mode'],
+                'description' => adminSearchExcerpt($row['input_excerpt']),
+                'meta' => ((int)$row['used_api'] === 1 ? 'API 사용' : '로컬 도우미') . ' · AI 기록 #' . $row['id'],
+                'url' => 'blog.php?id=' . (int)$row['user_id'],
+            ];
+        }
+        if ($items) $globalSearchGroups['AI 이용 기록'] = $items;
+    }
+
+    if ($hasSiteSettings) {
+        $searchSettings = adminFetchAll(
+            $conn,
+            "SELECT setting_key, setting_value FROM site_settings
+             WHERE setting_key LIKE ? OR setting_value LIKE ? ORDER BY setting_key LIMIT 8",
+            'ss',
+            [$globalLike, $globalLike]
+        );
+        $items = [];
+        foreach ($searchSettings as $row) {
+            $items[] = [
+                'title' => $row['setting_key'],
+                'description' => adminSearchExcerpt($row['setting_value']),
+                'meta' => '사이트 설정',
+                'url' => '#site-settings',
+            ];
+        }
+        if ($items) $globalSearchGroups['사이트 설정'] = $items;
+    }
+
+    if ($globalScope !== 'all') {
+        $allowedLabels = $globalScopeLabels[$globalScope];
+        $globalSearchGroups = array_filter(
+            $globalSearchGroups,
+            static fn($label) => in_array($label, $allowedLabels, true),
+            ARRAY_FILTER_USE_KEY
+        );
+    }
+    foreach ($globalSearchGroups as $groupItems) {
+        $globalSearchTotal += count($groupItems);
+    }
+}
+
 $reportStatusFilter = $_GET['report_status'] ?? 'all';
 if (!in_array($reportStatusFilter, ['all', 'pending', 'reviewed', 'resolved'], true)) {
     $reportStatusFilter = 'all';
@@ -481,6 +782,16 @@ if ($hasSiteSettings) {
 $recentCommentLikeSelect = $hasCommentLikes
     ? "(SELECT COUNT(*) FROM comment_likes cl WHERE cl.comment_id = c.id) AS comment_like_count"
     : "0 AS comment_like_count";
+$commentSearch = mb_substr(trim($_GET['comment_q'] ?? ''), 0, 80);
+$commentWhere = '';
+$commentTypes = '';
+$commentParams = [];
+if ($commentSearch !== '') {
+    $commentLike = '%' . $commentSearch . '%';
+    $commentWhere = "WHERE c.content LIKE ? OR u.nickname LIKE ? OR p.title LIKE ?";
+    $commentTypes = 'sss';
+    $commentParams = [$commentLike, $commentLike, $commentLike];
+}
 $recentComments = adminFetchAll(
     $conn,
     "SELECT c.id, c.content, c.created_at, c.post_id,
@@ -489,8 +800,11 @@ $recentComments = adminFetchAll(
      FROM comments c
      JOIN users u ON u.id = c.user_id
      JOIN posts p ON p.id = c.post_id
+     $commentWhere
      ORDER BY c.created_at DESC, c.id DESC
-     LIMIT 5"
+     LIMIT 8",
+    $commentTypes,
+    $commentParams
 );
 
 $hotCommentPosts = adminFetchAll(
@@ -536,17 +850,25 @@ $logActionLabels = [
 ];
 $logTargetLabels = ['user' => '회원', 'post' => '글', 'comment' => '댓글', 'report' => '신고'];
 $logFilter = $_GET['log_filter'] ?? 'all';
+$logSearch = mb_substr(trim($_GET['log_q'] ?? ''), 0, 80);
 if (!in_array($logFilter, ['all', 'user', 'post', 'comment', 'report'], true)) {
     $logFilter = 'all';
 }
-$logWhere = '';
+$logWhereParts = ['1 = 1'];
 $logTypes = '';
 $logParams = [];
 if ($logFilter !== 'all') {
-    $logWhere = "WHERE ml.target_type = ?";
-    $logTypes = "s";
+    $logWhereParts[] = "ml.target_type = ?";
+    $logTypes .= "s";
     $logParams[] = $logFilter;
 }
+if ($logSearch !== '') {
+    $logLike = '%' . $logSearch . '%';
+    $logWhereParts[] = "(ml.action LIKE ? OR ml.reason LIKE ? OR u.nickname LIKE ? OR CAST(ml.target_id AS CHAR) LIKE ?)";
+    $logTypes .= 'ssss';
+    array_push($logParams, $logLike, $logLike, $logLike, $logLike);
+}
+$logWhere = 'WHERE ' . implode(' AND ', $logWhereParts);
 $recentLogs = $hasModerationLogs ? adminFetchAll(
     $conn,
     "SELECT ml.target_type, ml.target_id, ml.action, ml.reason, ml.created_at, u.nickname AS admin_nickname
@@ -560,6 +882,7 @@ $recentLogs = $hasModerationLogs ? adminFetchAll(
 ) : [];
 
 $reportWhere = ["1 = 1"];
+$reportSearch = mb_substr(trim($_GET['report_q'] ?? ''), 0, 80);
 $reportTypes = "";
 $reportParams = [];
 if ($reportStatusFilter !== 'all') {
@@ -571,6 +894,12 @@ if ($reportTypeFilter !== 'all') {
     $reportWhere[] = "r.target_type = ?";
     $reportTypes .= "s";
     $reportParams[] = $reportTypeFilter;
+}
+if ($reportSearch !== '') {
+    $reportLike = '%' . $reportSearch . '%';
+    $reportWhere[] = "(r.reason LIKE ? OR r.admin_note LIKE ? OR u.nickname LIKE ? OR CAST(r.target_id AS CHAR) LIKE ?)";
+    $reportTypes .= 'ssss';
+    array_push($reportParams, $reportLike, $reportLike, $reportLike, $reportLike);
 }
 $recentReports = $hasReports ? adminFetchAll(
     $conn,
@@ -599,6 +928,16 @@ $recentReports = $hasReports ? adminFetchAll(
     $reportParams
 ) : [];
 
+$guestbookSearch = mb_substr(trim($_GET['guestbook_q'] ?? ''), 0, 80);
+$guestbookWhere = '';
+$guestbookTypes = '';
+$guestbookParams = [];
+if ($guestbookSearch !== '') {
+    $guestbookLike = '%' . $guestbookSearch . '%';
+    $guestbookWhere = "WHERE g.content LIKE ? OR writer.nickname LIKE ? OR owner.nickname LIKE ?";
+    $guestbookTypes = 'sss';
+    $guestbookParams = [$guestbookLike, $guestbookLike, $guestbookLike];
+}
 $recentGuestbook = adminFetchAll(
     $conn,
     "SELECT g.id, g.content, g.created_at, g.owner_id,
@@ -607,19 +946,35 @@ $recentGuestbook = adminFetchAll(
      FROM guestbook g
      JOIN users writer ON writer.id = g.user_id
      JOIN users owner ON owner.id = g.owner_id
+     $guestbookWhere
      ORDER BY g.created_at DESC, g.id DESC
-     LIMIT 5"
+     LIMIT 8",
+    $guestbookTypes,
+    $guestbookParams
 );
 
+$tagSearch = mb_substr(trim($_GET['tag_q'] ?? ''), 0, 60);
+$tagWhere = '';
+$tagTypes = '';
+$tagParams = [];
+if ($tagSearch !== '') {
+    $tagLike = '%' . $tagSearch . '%';
+    $tagWhere = 'WHERE t.name LIKE ? OR t.normalized_name LIKE ?';
+    $tagTypes = 'ss';
+    $tagParams = [$tagLike, $tagLike];
+}
 $topTags = adminFetchAll(
     $conn,
     "SELECT t.id, t.name, COUNT(*) AS post_count
      FROM tags t
      JOIN post_tags pt ON pt.tag_id = t.id
      JOIN posts p ON p.id = pt.post_id
+     $tagWhere
      GROUP BY t.id, t.name
      ORDER BY post_count DESC, t.name ASC
-     LIMIT 8"
+     LIMIT 12",
+    $tagTypes,
+    $tagParams
 );
 
 $topBlogs = adminFetchAll(
@@ -834,7 +1189,7 @@ if (($_GET['export'] ?? '') === 'admin') {
 }
 
 $pageTitle = '관리자 대시보드 · BRIDGE 206';
-$pageClass = 'page--wide';
+$pageClass = 'page--wide page--admin';
 require_once __DIR__ . '/../app/header.php';
 ?>
 
@@ -854,6 +1209,70 @@ require_once __DIR__ . '/../app/header.php';
   <?php if ($adminMessage !== ''): ?>
     <div class="form-ok"><?= htmlspecialchars($adminMessage) ?></div>
   <?php endif; ?>
+
+  <section class="admin-global-search" id="global-search">
+    <div class="admin-global-search__head">
+      <div>
+        <span>ADMIN SEARCH</span>
+        <h2>관리자 통합 검색</h2>
+      </div>
+      <p>회원부터 게시글, 댓글, 쪽지, 운영 기록까지 한 번에 찾습니다.</p>
+    </div>
+    <form class="admin-global-search__form" method="get" action="admin.php#global-search">
+      <input type="hidden" name="period" value="<?= htmlspecialchars($summaryPeriod) ?>">
+      <label>
+        <select name="admin_scope" aria-label="검색할 항목">
+          <option value="all" <?= $globalScope === 'all' ? 'selected' : '' ?>>모든 항목</option>
+          <option value="users" <?= $globalScope === 'users' ? 'selected' : '' ?>>회원·블로그</option>
+          <option value="posts" <?= $globalScope === 'posts' ? 'selected' : '' ?>>게시글</option>
+          <option value="comments" <?= $globalScope === 'comments' ? 'selected' : '' ?>>댓글</option>
+          <option value="guestbook" <?= $globalScope === 'guestbook' ? 'selected' : '' ?>>방명록</option>
+          <option value="messages" <?= $globalScope === 'messages' ? 'selected' : '' ?>>쪽지</option>
+          <option value="taxonomy" <?= $globalScope === 'taxonomy' ? 'selected' : '' ?>>카테고리·태그</option>
+          <option value="reports" <?= $globalScope === 'reports' ? 'selected' : '' ?>>신고</option>
+          <option value="logs" <?= $globalScope === 'logs' ? 'selected' : '' ?>>운영 로그</option>
+          <option value="points" <?= $globalScope === 'points' ? 'selected' : '' ?>>포인트 내역</option>
+          <option value="ai" <?= $globalScope === 'ai' ? 'selected' : '' ?>>AI 이용 기록</option>
+          <option value="settings" <?= $globalScope === 'settings' ? 'selected' : '' ?>>사이트 설정</option>
+        </select>
+      </label>
+      <label>
+        <input type="search" name="admin_q" value="<?= htmlspecialchars($globalSearch) ?>" maxlength="100" aria-label="관리자 통합 검색어" placeholder="이름, 닉네임, 이메일, 제목, 본문, 댓글, 태그, 신고 사유 등을 검색">
+      </label>
+      <button type="submit">전체 검색</button>
+      <?php if ($globalSearch !== ''): ?><a href="admin.php?period=<?= urlencode($summaryPeriod) ?>#global-search">검색 초기화</a><?php endif; ?>
+    </form>
+
+    <?php if ($globalSearch !== ''): ?>
+      <div class="admin-global-search__summary">
+        <strong>‘<?= htmlspecialchars($globalSearch) ?>’ 검색 결과</strong>
+        <span><?= number_format($globalSearchTotal) ?>개 표시 · 종류별 최대 8개</span>
+      </div>
+      <?php if (!$globalSearchGroups): ?>
+        <p class="admin-empty">일치하는 회원이나 콘텐츠, 운영 기록이 없습니다.</p>
+      <?php else: ?>
+        <div class="admin-global-results">
+          <?php foreach ($globalSearchGroups as $groupLabel => $groupItems): ?>
+            <section class="admin-global-group">
+              <div class="admin-global-group__head">
+                <h3><?= htmlspecialchars($groupLabel) ?></h3>
+                <span><?= count($groupItems) ?>개</span>
+              </div>
+              <div class="admin-global-group__list">
+                <?php foreach ($groupItems as $item): ?>
+                  <a href="<?= htmlspecialchars($item['url']) ?>">
+                    <strong><?= htmlspecialchars($item['title']) ?></strong>
+                    <?php if ($item['description'] !== ''): ?><span><?= htmlspecialchars($item['description']) ?></span><?php endif; ?>
+                    <em><?= htmlspecialchars($item['meta']) ?></em>
+                  </a>
+                <?php endforeach; ?>
+              </div>
+            </section>
+          <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
+    <?php endif; ?>
+  </section>
 
   <div class="admin-period">
     <strong>요약 기준: <?= htmlspecialchars($periodLabel) ?></strong>
@@ -1062,7 +1481,13 @@ require_once __DIR__ . '/../app/header.php';
               <input type="text" name="main_feature_text" maxlength="255" value="<?= htmlspecialchars($siteSettings['main_feature_text']) ?>">
             </label>
           </div>
-          <label class="admin-check"><input type="checkbox" name="allow_public_join" value="1" <?= $siteSettings['allow_public_join'] === '1' ? 'checked' : '' ?>> 공개 회원가입 허용</label>
+          <label class="admin-check admin-check--setting">
+            <input type="checkbox" name="allow_public_join" value="1" <?= $siteSettings['allow_public_join'] === '1' ? 'checked' : '' ?>>
+            <span>
+              <strong>신규 회원가입 허용</strong>
+              <small>체크하면 로그인하지 않은 방문자가 회원가입 화면을 이용할 수 있습니다.</small>
+            </span>
+          </label>
           <button type="submit" class="btn-primary">사이트 설정 저장</button>
         </form>
       <?php endif; ?>
@@ -1266,6 +1691,12 @@ require_once __DIR__ . '/../app/header.php';
         <h2>최근 댓글</h2>
         <a href="comments_manage.php?scope=all"><?= count($recentComments) ?>개 · 전체 관리</a>
       </div>
+      <form class="admin-mini-search" method="get" action="admin.php#comments">
+        <input type="hidden" name="period" value="<?= htmlspecialchars($summaryPeriod) ?>">
+        <input type="search" name="comment_q" value="<?= htmlspecialchars($commentSearch) ?>" placeholder="댓글 내용, 작성자, 게시글 제목">
+        <button type="submit">댓글 검색</button>
+        <?php if ($commentSearch !== ''): ?><a href="admin.php?period=<?= urlencode($summaryPeriod) ?>#comments">초기화</a><?php endif; ?>
+      </form>
       <div class="admin-list">
         <?php foreach ($recentComments as $c): ?>
           <div class="admin-list__item">
@@ -1297,6 +1728,10 @@ require_once __DIR__ . '/../app/header.php';
         <form class="admin-search" method="get" action="admin.php#reports">
           <input type="hidden" name="period" value="<?= htmlspecialchars($summaryPeriod) ?>">
           <label>
+            <span>신고 검색</span>
+            <input type="search" name="report_q" value="<?= htmlspecialchars($reportSearch) ?>" placeholder="신고자, 사유, 메모, 대상 번호">
+          </label>
+          <label>
             <span>신고 상태</span>
             <select name="report_status">
               <option value="all" <?= $reportStatusFilter === 'all' ? 'selected' : '' ?>>전체</option>
@@ -1316,7 +1751,7 @@ require_once __DIR__ . '/../app/header.php';
             </select>
           </label>
           <button type="submit">필터</button>
-          <?php if ($reportStatusFilter !== 'all' || $reportTypeFilter !== 'all'): ?><a href="admin.php?period=<?= urlencode($summaryPeriod) ?>#reports">초기화</a><?php endif; ?>
+          <?php if ($reportSearch !== '' || $reportStatusFilter !== 'all' || $reportTypeFilter !== 'all'): ?><a href="admin.php?period=<?= urlencode($summaryPeriod) ?>#reports">초기화</a><?php endif; ?>
         </form>
         <?php if (!$recentReports): ?>
           <p class="admin-empty">조건에 맞는 신고가 없습니다.</p>
@@ -1405,6 +1840,13 @@ require_once __DIR__ . '/../app/header.php';
         <span><?= $hasModerationLogs ? count($recentLogs) . '개' : 'migration 필요' ?></span>
       </div>
       <?php if ($hasModerationLogs): ?>
+        <form class="admin-mini-search" method="get" action="admin.php#logs">
+          <input type="hidden" name="period" value="<?= htmlspecialchars($summaryPeriod) ?>">
+          <input type="hidden" name="log_filter" value="<?= htmlspecialchars($logFilter) ?>">
+          <input type="search" name="log_q" value="<?= htmlspecialchars($logSearch) ?>" placeholder="조치, 관리자, 사유, 대상 번호">
+          <button type="submit">로그 검색</button>
+          <?php if ($logSearch !== ''): ?><a href="admin.php?period=<?= urlencode($summaryPeriod) ?>&log_filter=<?= urlencode($logFilter) ?>#logs">초기화</a><?php endif; ?>
+        </form>
         <div class="admin-filter">
           <a class="<?= $logFilter === 'all' ? 'is-active' : '' ?>" href="admin.php?<?= htmlspecialchars(adminQueryWith(['log_filter' => 'all', 'export' => null])) ?>#logs">전체</a>
           <a class="<?= $logFilter === 'user' ? 'is-active' : '' ?>" href="admin.php?<?= htmlspecialchars(adminQueryWith(['log_filter' => 'user', 'export' => null])) ?>#logs">회원</a>
@@ -1446,6 +1888,12 @@ require_once __DIR__ . '/../app/header.php';
         <h2>최근 방명록</h2>
         <span><?= count($recentGuestbook) ?>개</span>
       </div>
+      <form class="admin-mini-search" method="get" action="admin.php#blogs">
+        <input type="hidden" name="period" value="<?= htmlspecialchars($summaryPeriod) ?>">
+        <input type="search" name="guestbook_q" value="<?= htmlspecialchars($guestbookSearch) ?>" placeholder="방명록 내용, 작성자, 블로그 주인">
+        <button type="submit">방명록 검색</button>
+        <?php if ($guestbookSearch !== ''): ?><a href="admin.php?period=<?= urlencode($summaryPeriod) ?>#blogs">초기화</a><?php endif; ?>
+      </form>
       <div class="admin-list">
         <?php foreach ($recentGuestbook as $g): ?>
           <a href="guestbook.php?id=<?= (int)$g['owner_id'] ?>">
@@ -1463,6 +1911,12 @@ require_once __DIR__ . '/../app/header.php';
         <h2>인기 태그</h2>
         <span>TOP <?= count($topTags) ?></span>
       </div>
+      <form class="admin-mini-search" method="get" action="admin.php#tags">
+        <input type="hidden" name="period" value="<?= htmlspecialchars($summaryPeriod) ?>">
+        <input type="search" name="tag_q" value="<?= htmlspecialchars($tagSearch) ?>" placeholder="태그 이름 검색">
+        <button type="submit">태그 검색</button>
+        <?php if ($tagSearch !== ''): ?><a href="admin.php?period=<?= urlencode($summaryPeriod) ?>#tags">초기화</a><?php endif; ?>
+      </form>
       <div class="admin-chips">
         <?php foreach ($topTags as $t): ?>
           <a href="index.php?tag=<?= (int)$t['id'] ?>">#<?= htmlspecialchars($t['name']) ?> <span><?= (int)$t['post_count'] ?></span></a>

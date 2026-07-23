@@ -154,6 +154,7 @@ $isHome = !$ajax;   // 전체 페이지(헤더·히어로·위젯)는 일반 요
 
 if (!$ajax) {
     $pageTitle = '블로그 메인 · BRIDGE 206';
+    $pageClass = 'page--home';
     require_once __DIR__ . '/../app/header.php';
 }
 ?>

@@ -444,16 +444,10 @@ require_once __DIR__ . '/../app/header.php';
     <?php endif; ?>
 
     <div class="post-reader" data-reader-tools>
-      <div class="post-reader__progress" aria-hidden="true"><span data-read-progress></span></div>
       <div class="post-reader__meta">
         <span>읽기 <?= (int)$readMinutes ?>분</span>
         <span>본문 <?= number_format($readChars) ?>자</span>
         <span>댓글 <?= number_format(count($comments)) ?>개</span>
-      </div>
-      <div class="post-reader__actions">
-        <a href="#postBody">본문</a>
-        <a href="#comments">댓글</a>
-        <button type="button" data-scroll-top>맨 위</button>
       </div>
     </div>
 
@@ -677,8 +671,6 @@ require_once __DIR__ . '/../app/header.php';
     var apiUrl = '../api/api.php';
     var commentTitle = document.querySelector('[data-comment-title]');
     var ajaxStatus = document.querySelector('[data-ajax-status]');
-    var readProgress = document.querySelector('[data-read-progress]');
-    var scrollTopBtn = document.querySelector('[data-scroll-top]');
     var messages = {
       empty_content: '내용을 입력해 주세요.',
       content_too_long: '댓글은 500자까지 입력할 수 있어요.',
@@ -729,26 +721,6 @@ require_once __DIR__ . '/../app/header.php';
           if (ajaxStatus.textContent === text) ajaxStatus.textContent = '';
         }, 1800);
       }
-    }
-
-    function updateReadProgress() {
-      if (!readProgress) return;
-      var body = document.getElementById('postBody');
-      if (!body) return;
-      var start = body.offsetTop;
-      var end = start + body.offsetHeight - window.innerHeight;
-      var progress = end <= start ? 1 : (window.scrollY - start) / (end - start);
-      progress = Math.max(0, Math.min(1, progress));
-      readProgress.style.width = Math.round(progress * 100) + '%';
-    }
-
-    window.addEventListener('scroll', updateReadProgress, { passive: true });
-    window.addEventListener('resize', updateReadProgress);
-    updateReadProgress();
-    if (scrollTopBtn) {
-      scrollTopBtn.addEventListener('click', function () {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      });
     }
 
     function updateCommentCounter(textarea) {

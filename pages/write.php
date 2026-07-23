@@ -125,6 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $pageTitle = '글쓰기 · BRIDGE 206';
+$pageClass = 'page--write';
 require_once __DIR__ . '/../app/header.php';
 
 $bridgeQuestions = [
@@ -148,7 +149,7 @@ $bridgeQuestions = [
 
 <section class="write">
   <div class="write-top">
-    <button type="button" class="write-menu-btn" aria-label="글쓰기 메뉴">☰</button>
+    <button type="button" class="write-menu-btn" aria-label="전체 메뉴 열기" data-write-menu>☰</button>
     <div class="write-top__meta">
       <strong>글쓰기</strong>
       <span>BRIDGE 206</span>
@@ -203,13 +204,6 @@ $bridgeQuestions = [
         <div class="ai-write__results" data-ai-results></div>
       </div>
     </section>
-
-    <aside class="write-side-tools" aria-label="글쓰기 도구">
-      <button type="button" data-tool-target="images" title="사진/동영상 첨부">▧</button>
-      <button type="button" data-tool-target="prompts" title="글감 질문">?</button>
-      <button type="button" data-tool-target="settings" title="글 설정">⚙</button>
-      <button type="button" data-tool-target="tags" title="태그">#</button>
-    </aside>
 
     <div class="wf-row write-settings" data-write-block="settings">
       <label>
@@ -394,23 +388,11 @@ $bridgeQuestions = [
     }
   });
 
-  document.addEventListener('click', function (event) {
-    var tool = event.target.closest('[data-tool-target]');
-    if (!tool) return;
-    var target = tool.getAttribute('data-tool-target');
-    if (target === 'images') {
-      var file = document.querySelector('input[type="file"][name="images[]"]');
-      if (file) file.click();
-      return;
-    }
-    if (target === 'prompts') {
-      var promptBlock = document.querySelector('.bridge-write');
-      if (promptBlock) promptBlock.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      return;
-    }
-    var block = document.querySelector('[data-write-block="' + target + '"]');
-    if (block) block.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  });
+  var writeMenu = document.querySelector('[data-write-menu]');
+  var globalMenu = document.querySelector('.topbar__toggle[data-menu-open]');
+  if (writeMenu && globalMenu) {
+    writeMenu.addEventListener('click', function () { globalMenu.click(); });
+  }
 })();
 </script>
 

@@ -215,7 +215,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $pageTitle = '블로그 꾸미기 · BRIDGE 206';
-$pageClass = 'page--wide';
+$pageClass = 'page--wide page--customize';
 require_once __DIR__ . '/../app/header.php';
 ?>
 

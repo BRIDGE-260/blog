@@ -226,17 +226,8 @@ if (isset($_SESSION['user_id'])) {
           </summary>
           <div class="topbar-profile__menu">
             <a href="blog.php?id=<?= (int)$_SESSION['user_id'] ?>">내 블로그</a>
-            <a href="stats.php">블로그 현황</a>
-            <a href="activity.php">내 활동</a>
-            <a href="points.php">포인트<?= $loginPoints !== null ? ' ' . number_format($loginPoints) . 'P' : '' ?></a>
-            <a href="comments_manage.php">댓글 관리</a>
-            <a href="messages.php">쪽지<?= $unreadMessages > 0 ? ' (' . ($unreadMessages > 99 ? '99+' : (int)$unreadMessages) . ')' : '' ?></a>
-            <a href="scraps.php">스크랩</a>
-            <?php if ($loginIsAdmin): ?>
-              <a href="admin.php">관리자</a>
-            <?php endif; ?>
             <a href="profile.php">프로필 수정</a>
-            <a href="logout.php">로그아웃</a>
+            <a class="topbar-profile__logout" href="logout.php">로그아웃</a>
           </div>
         </details>
       <?php else: ?>
@@ -263,22 +254,24 @@ if (isset($_SESSION['user_id'])) {
   </div>
 
   <nav class="side-menu__nav" aria-label="전체 메뉴">
-    <a href="index.php">블로그 홈</a>
+    <a class="side-menu__home" href="index.php">블로그 홈</a>
     <?php if ($loginNickname): ?>
       <a href="write.php">글쓰기</a>
       <a href="blog.php?id=<?= (int)$_SESSION['user_id'] ?>">내 블로그</a>
-      <a href="activity.php">내 활동</a>
-      <a href="points.php">포인트<?= $loginPoints !== null ? ' ' . number_format($loginPoints) . 'P' : '' ?></a>
       <a href="neighbors.php">이웃</a>
-      <?php if ($loginIsAdmin): ?>
-        <a href="admin.php">관리자</a>
-      <?php endif; ?>
+      <a class="side-menu__point-link" href="points.php">
+        <span>포인트</span>
+        <?php if ($loginPoints !== null): ?><b><?= number_format($loginPoints) ?>P</b><?php endif; ?>
+      </a>
       <a class="topbar__noti" href="notifications.php">
         소식
         <?php if ($unreadNotifications > 0): ?>
           <span class="topbar__badge"><?= $unreadNotifications > 99 ? '99+' : (int)$unreadNotifications ?></span>
         <?php endif; ?>
       </a>
+      <?php if ($loginIsAdmin): ?>
+        <a href="admin.php">관리자</a>
+      <?php endif; ?>
       <a class="topbar__me" href="profile.php">
         <span class="topbar__avatar">
           <?php if (!empty($loginAvatar)): ?>
