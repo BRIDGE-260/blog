@@ -132,11 +132,14 @@ if ($tab === 'neighbors') {
                     WHERE p3.user_id = u.id AND p3.status='published' AND p3.visibility='all'
                     ORDER BY p3.created_at DESC LIMIT 1) AS latest_title,
                    $lastSeenSelect,
-                   EXISTS(SELECT 1 FROM neighbors n WHERE n.user_id = ? AND n.neighbor_id = u.id) AS is_neighbor
+                   EXISTS(SELECT 1 FROM neighbors n WHERE n.user_id = ? AND n.neighbor_id = u.id) AS is_neighbor,
+                   EXISTS(SELECT 1 FROM neighbors r
+                          WHERE (r.user_id = ? AND r.neighbor_id = u.id)
+                             OR (r.user_id = u.id AND r.neighbor_id = ?)) AS can_message
             FROM users u
             WHERE u.id <> ?";
-    $types  = $sharedTypes . "ii";
-    $params = array_merge($sharedParams, [$viewerId, $viewerId]);
+    $types  = $sharedTypes . "iiii";
+    $params = array_merge($sharedParams, [$viewerId, $viewerId, $viewerId, $viewerId]);
     if ($q !== '') {
         $sql .= " AND (u.nickname LIKE ? OR u.blog_title LIKE ?)";
         $like = '%' . $q . '%';
@@ -212,7 +215,9 @@ function userCard($u, $action, $label, $class, $opts = []) {
         <input type="hidden" name="rsort"   value="<?= htmlspecialchars($opts['rsort'] ?? '') ?>">
         <button type="submit" class="<?= $class ?>"><?= $label ?></button>
       </form>
-      <a class="btn-ghost-dark nbr__message" href="messages.php?to=<?= (int)$u['id'] ?>">쪽지</a>
+      <?php if (!empty($opts['can_message'])): ?>
+        <a class="btn-ghost-dark nbr__message" href="messages.php?to=<?= (int)$u['id'] ?>">쪽지</a>
+      <?php endif; ?>
     </div>
     <?php
 }
@@ -232,7 +237,7 @@ function userCard($u, $action, $label, $class, $opts = []) {
     <?php else: ?>
       <div class="nbr-list">
         <?php foreach ($myNeighbors as $u):
-            userCard($u, 'cancel', '이웃 취소', 'btn-ghost-dark', ['mutual' => $u['mutual']]);
+            userCard($u, 'cancel', '이웃 취소', 'btn-ghost-dark', ['mutual' => $u['mutual'], 'can_message' => true]);
         endforeach; ?>
       </div>
     <?php endif; ?>
@@ -243,7 +248,7 @@ function userCard($u, $action, $label, $class, $opts = []) {
       <h2 class="sec-title">나를 추가한 이웃</h2>
       <div class="nbr-list">
         <?php foreach ($addedMe as $u):
-            userCard($u, 'add', '이웃 추가', 'btn-primary');
+            userCard($u, 'add', '이웃 추가', 'btn-primary', ['can_message' => true]);
         endforeach; ?>
       </div>
     </section>
@@ -287,6 +292,7 @@ function userCard($u, $action, $label, $class, $opts = []) {
                   'meta' => '글 ' . (int)$u['post_count'],
                   'latest' => $u['latest_title'] ?? '',
                   'shared' => (int)($u['shared_count'] ?? 0),
+                  'can_message' => (int)($u['can_message'] ?? 0) === 1,
               ];
               if ($u['is_neighbor']) {
                   userCard($u, 'cancel', '이웃 취소', 'btn-ghost-dark', $rd);
@@ -310,6 +316,7 @@ function userCard($u, $action, $label, $class, $opts = []) {
                 'meta' => '글 ' . (int)$u['post_count'],
                 'latest' => $u['latest_title'] ?? '',
                 'shared' => (int)($u['shared_count'] ?? 0),
+                'can_message' => (int)($u['can_message'] ?? 0) === 1,
             ];
             if ($u['is_neighbor']) {
                 userCard($u, 'cancel', '이웃 취소', 'btn-ghost-dark', $rd);

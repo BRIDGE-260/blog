@@ -918,6 +918,79 @@ html[data-theme="dark"] .password-field {
 html[data-theme="dark"] .password-field button {
   color: var(--accent-dark);
 }
+
+/* Final auth layout: compact enough for one viewport and complete dark surfaces. */
+html[data-font-size="normal"] {
+  --cont-h: 620px;
+}
+html[data-font-size="normal"] body {
+  padding-top: 58px;
+  padding-bottom: 20px;
+}
+html[data-font-size="normal"] .sign-up {
+  padding-top: 18px;
+  padding-bottom: 18px;
+}
+html[data-font-size="normal"] .sign-up h2 {
+  margin-bottom: 4px;
+  font-size: 25px;
+}
+html[data-font-size="normal"] .sign-up label {
+  margin-top: 5px;
+}
+html[data-font-size="normal"] .sign-up input {
+  min-height: 36px;
+}
+html[data-font-size="normal"] .sign-up .password-meter {
+  margin-top: 5px;
+}
+html[data-font-size="normal"] .sign-up .check-msg {
+  min-height: 14px;
+  margin-top: 2px;
+}
+html[data-font-size="normal"] .sign-up .submit {
+  min-height: 42px;
+  margin-top: 10px;
+}
+html[data-theme="dark"] .sub-cont {
+  background: var(--surface);
+}
+html[data-theme="dark"] .img::before {
+  background-image:
+    url("../images/bridge206-logo-white.png"),
+    radial-gradient(circle at 28% 30%, rgba(237, 76, 92, .18), transparent 25%),
+    radial-gradient(circle at 78% 36%, rgba(90, 151, 135, .2), transparent 27%),
+    radial-gradient(circle at 76% 78%, rgba(245, 130, 22, .17), transparent 26%),
+    linear-gradient(145deg, #202938, #121821);
+}
+html[data-theme="dark"] .img::after {
+  border-left-color: #4f78ca;
+  background:
+    linear-gradient(90deg, rgba(79, 120, 202, .16), transparent 38%),
+    linear-gradient(180deg, rgba(18, 24, 33, .36), rgba(18, 24, 33, .08) 46%, rgba(18, 24, 33, .58));
+}
+html[data-theme="dark"] .img__text h2 {
+  color: #f5f8ff;
+}
+html[data-theme="dark"] .img__text p {
+  color: #bdc8d8;
+}
+html[data-theme="dark"] .img__btn {
+  border-color: #8eb4ff;
+  color: #dce8ff;
+}
+html[data-theme="dark"] .password-field button {
+  border-color: var(--line);
+  background: #222a37;
+  color: #dce8ff;
+}
+html[data-theme="dark"] .password-meter i {
+  background: #303948;
+}
+html[data-theme="dark"] .error-msg {
+  background: rgba(237, 76, 92, .15);
+  color: #ffabb2;
+}
 html[data-theme="dark"] .img::before {
   background-image:
     url("../images/bridge206-logo-white.png"),

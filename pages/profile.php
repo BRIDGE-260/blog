@@ -114,6 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $pageTitle = '프로필 수정 · BRIDGE 206';
+$pageClass = 'page--settings page--profile';
 require_once __DIR__ . '/../app/header.php';
 ?>
 
@@ -208,7 +209,7 @@ require_once __DIR__ . '/../app/header.php';
     </div>
   </form>
 
-  <p class="setting__danger"><a href="withdraw.php">회원 탈퇴</a></p>
+  <p class="setting__danger"><a class="btn-withdraw" href="withdraw.php">회원 탈퇴</a></p>
 </section>
 
 <script>

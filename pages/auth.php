@@ -83,7 +83,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // 가입과 동시에 로그인 처리
                 $_SESSION['user_id']  = $newId;
                 $_SESSION['nickname'] = $nickname;
-                $_SESSION['flash_toast'] = '회원가입이 완료됐어요. 이제 블로그를 시작해보세요!';
                 header('Location: index.php');
                 exit;
             }
@@ -117,7 +116,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($user && password_verify($password, $user['password'])) {
                 $_SESSION['user_id']  = $user['id'];
                 $_SESSION['nickname'] = $user['nickname'];
-                $_SESSION['flash_toast'] = '다시 오신 걸 환영해요.';
                 header('Location: ' . ((int)($user['is_admin'] ?? 0) === 1 ? 'admin.php' : 'index.php'));
                 exit;
             } else {
@@ -143,7 +141,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   document.documentElement.setAttribute('data-theme', theme);
 })();
 </script>
-<link rel="stylesheet" href="../assets/css/auth.css?v=20260626bridge">
+<link rel="stylesheet" href="../assets/css/auth.css?v=20260724final2">
 </head>
 <body>
 

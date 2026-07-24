@@ -106,6 +106,7 @@ $cats = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
 $pageTitle = '카테고리 관리 · BRIDGE 206';
+$pageClass = 'page--settings page--categories';
 require_once __DIR__ . '/../app/header.php';
 ?>
 

@@ -187,7 +187,7 @@ if (isset($_SESSION['user_id'])) {
   document.documentElement.setAttribute('data-theme', theme);
 })();
 </script>
-<link rel="stylesheet" href="../assets/css/style.css?v=20260716ai">
+<link rel="stylesheet" href="../assets/css/style.css?v=20260724final4">
 </head>
 <body <?= $flashToast !== '' ? 'data-flash-toast="' . htmlspecialchars($flashToast, ENT_QUOTES) . '"' : '' ?>>
 

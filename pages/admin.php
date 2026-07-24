@@ -1210,6 +1210,30 @@ require_once __DIR__ . '/../app/header.php';
     <div class="form-ok"><?= htmlspecialchars($adminMessage) ?></div>
   <?php endif; ?>
 
+  <div class="admin-workspace">
+    <aside class="admin-sidebar" aria-label="관리자 대시보드 메뉴">
+      <strong>관리 메뉴</strong>
+      <nav>
+        <span>대시보드</span>
+        <a href="#global-search">통합 검색</a>
+        <a href="#feature-activity">이용 현황</a>
+        <span>사이트 운영</span>
+        <a href="#site-settings">사이트 설정</a>
+        <a href="#users">회원 관리</a>
+        <a href="#posts">게시글 관리</a>
+        <span>소통 · 안전</span>
+        <a href="#comments">최근 댓글</a>
+        <a href="#reports">신고 관리</a>
+        <a href="#hot-comments">댓글 많은 글</a>
+        <span>운영 기록</span>
+        <a href="#logs">운영 로그</a>
+        <a href="#blogs">방명록</a>
+        <a href="#tags">태그</a>
+        <a href="#top-blogs">인기 블로그</a>
+      </nav>
+    </aside>
+    <div class="admin-workspace__content">
+
   <section class="admin-global-search" id="global-search">
     <div class="admin-global-search__head">
       <div>
@@ -1648,7 +1672,14 @@ require_once __DIR__ . '/../app/header.php';
                 <td><a href="blog.php?id=<?= (int)$p['user_id'] ?>"><?= htmlspecialchars($p['nickname']) ?></a></td>
                 <td><span class="admin-badge"><?= htmlspecialchars($statusLabels[$p['status']] ?? $p['status']) ?></span></td>
                 <td><?= htmlspecialchars($visibilityLabels[$p['visibility']] ?? $p['visibility']) ?></td>
-                <td>조회 <?= (int)$p['view_count'] ?> · 공감 <?= (int)$p['like_count'] ?> · 댓글 좋아요 <?= (int)$p['comment_like_count'] ?> · 댓글 <?= (int)$p['comment_count'] ?></td>
+                <td>
+                  <div class="admin-reactions">
+                    <span>조회 <strong><?= (int)$p['view_count'] ?></strong></span>
+                    <span>공감 <strong><?= (int)$p['like_count'] ?></strong></span>
+                    <span>댓글 좋아요 <strong><?= (int)$p['comment_like_count'] ?></strong></span>
+                    <span>댓글 <strong><?= (int)$p['comment_count'] ?></strong></span>
+                  </div>
+                </td>
                 <td><?= date('Y.m.d H:i', strtotime($p['created_at'])) ?></td>
                 <td>
                   <form class="admin-inline-form admin-inline-form--post" method="post" action="admin.php">
@@ -1689,7 +1720,7 @@ require_once __DIR__ . '/../app/header.php';
     <section class="admin-panel" id="comments">
       <div class="admin-panel__head">
         <h2>최근 댓글</h2>
-        <a href="comments_manage.php?scope=all"><?= count($recentComments) ?>개 · 전체 관리</a>
+        <a class="admin-section-link" href="comments_manage.php?scope=all"><?= count($recentComments) ?>개 · 전체 관리</a>
       </div>
       <form class="admin-mini-search" method="get" action="admin.php#comments">
         <input type="hidden" name="period" value="<?= htmlspecialchars($summaryPeriod) ?>">
@@ -1941,6 +1972,8 @@ require_once __DIR__ . '/../app/header.php';
         <?php if (!$topBlogs): ?><p class="admin-empty">블로그가 없습니다.</p><?php endif; ?>
       </div>
     </section>
+  </div>
+    </div>
   </div>
 </section>
 

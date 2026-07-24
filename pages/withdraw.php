@@ -86,10 +86,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $pageTitle = '회원 탈퇴 · BRIDGE 206';
+$pageClass = 'page--settings page--withdraw';
 require_once __DIR__ . '/../app/header.php';
 ?>
 
-<section class="setting">
+<section class="setting withdraw-setting">
   <h1>회원 탈퇴</h1>
 
   <?php if ($error): ?>
@@ -101,7 +102,7 @@ require_once __DIR__ . '/../app/header.php';
     모두 삭제되고 되돌릴 수 없어요. 계속하려면 비밀번호를 입력하세요.
   </p>
 
-  <form class="write-form" method="post" action="withdraw.php">
+  <form class="write-form withdraw-form" method="post" action="withdraw.php">
     <label class="wf-field">
       <span>비밀번호 확인</span>
       <input type="password" name="password" required>

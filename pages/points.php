@@ -29,6 +29,10 @@ $stmt->bind_param("is", $userId, $today);
 $stmt->execute();
 $todaySpin = $stmt->get_result()->fetch_assoc();
 $stmt->close();
+$rouletteAngles = [0 => 150, 5 => 330, 10 => 270, 20 => 210, 50 => 90];
+$rouletteAngle = $spinResult && $spinResult['ok']
+    ? 1440 + ($rouletteAngles[(int)$spinResult['reward']] ?? 0)
+    : 1440;
 
 $stmt = $conn->prepare(
     "SELECT amount, action_type, description, created_at
@@ -75,9 +79,9 @@ require_once __DIR__ . '/../app/header.php';
         <div><span>DAILY EVENT</span><h2>오늘의 포인트 룰렛</h2></div>
         <b>하루 1회</b>
       </div>
-      <div class="roulette-stage <?= $spinResult && $spinResult['ok'] ? 'is-spinning' : '' ?>">
+      <div class="roulette-stage <?= $spinResult && $spinResult['ok'] ? 'is-spinning' : '' ?>" style="--roulette-angle: <?= (int)$rouletteAngle ?>deg">
         <div class="roulette-pointer">▼</div>
-        <div class="roulette-wheel" aria-label="0, 5, 10, 20, 50 포인트 룰렛">
+        <div class="roulette-wheel" aria-label="5, 10, 20, 0, 50, 10 포인트 룰렛">
           <span class="r1">5P</span><span class="r2">10P</span><span class="r3">20P</span>
           <span class="r4">0P</span><span class="r5">50P</span><span class="r6">10P</span>
         </div>
